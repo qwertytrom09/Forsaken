@@ -109,8 +109,8 @@
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                 try {
                     messageElement.textContent = `Attempting to load idle.fbx (Attempt ${attempt})...`;
-                    // --- CHANGED PATH BACK TO RELATIVE FOR LOCAL HOSTING ---
-                    await loadFBXModel('/model/idle.fbx'); 
+                    // --- FIXED: Removed the leading slash to use a relative URL, resolving the 'Invalid URL' error ---
+                    await loadFBXModel('model/idle.fbx'); 
                     // --------------------------------------------------------
                     messageElement.textContent = 'Model loaded successfully!';
                     messageElement.classList.replace('bg-yellow-500', 'bg-green-500');
@@ -118,10 +118,10 @@
                 } catch (error) {
                     console.error(`Error loading model on attempt ${attempt}:`, error);
                     if (attempt < maxRetries) {
-                        messageElement.textContent = `Load failed. Retrying in ${Math.pow(2, attempt)}s... Please ensure you are running this page from a web server.`;
+                        messageElement.textContent = `Load failed. Retrying in ${Math.pow(2, attempt)}s... Please ensure the file is in the 'model/' folder relative to this page.`;
                         await delay(Math.pow(2, attempt) * 1000);
                     } else {
-                        messageElement.textContent = 'Failed to load idle.fbx after several retries. Check the console for errors and ensure the file path is correct AND you are using a web server.';
+                        messageElement.textContent = 'Failed to load idle.fbx after several retries. Double-check that the file is correctly placed in the "model/" folder.';
                         messageElement.classList.replace('bg-yellow-500', 'bg-red-500');
                     }
                 }
