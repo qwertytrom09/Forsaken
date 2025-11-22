@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js FBX Animation Player</title>
+    <!-- Load Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for the 3D canvas */
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden; /* Prevent body scroll due to canvas */
+        }
+        #container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #1f2937; /* Dark background */
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+<!-- The container where the Three.js canvas will be injected -->
+<div id="container">
+    <!-- Loading overlay displayed until the model is loaded -->
+    <div id="loading-overlay" class="absolute inset-0 bg-gray-900 bg-opacity-90 flex flex-col justify-center items-center z-10 p-4 rounded-lg">
+        <div class="text-white text-2xl font-semibold mb-4 animate-pulse">Loading 3D Model...</div>
+        <p class="text-gray-400 text-sm max-w-lg text-center font-bold mb-4">
+            (Loading: ./models/idle.fbx)
+        </p>
+        <p class="text-gray-400 text-xs max-w-lg text-center">
+            *Reminder: This requires running a local web server (e.g., Python's http.server) to access local files.
+        </p>
+    </div>
+</div>
+
+<!-- Three.js Library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- FFLATE Library (REQUIRED by FBXLoader for decompression) -->
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.7.4/umd/index.js"></script>
+<!-- FBX Loader (required for .fbx files) -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
+<!-- Orbit Controls (allows user to rotate and zoom the scene with mouse) -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+    // --- Global Variables ---
+    let camera, scene, renderer, mixer, clock, controls;
+    const container = document.getElementById('container');
+    const loadingOverlay = document.getElementById('loading-overlay');
+
+    // Relative path to your FBX file. This assumes the file structure:
+    // index.html
+    // models/idle.fbx
+    const MODEL_URL = './model/idle.fbx'; 
+    
+    // --- Utility Functions ---
+
+    // Function to initialize the Three.js scene
+    function init() {
+        // Clock for tracking time, essential for animation updates
+        clock = new THREE.Clock();
+
+        // 1. Scene Setup
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x2d3748); // Dark gray background
+
+        // 2. Camera Setup
+        const aspectRatio = window.innerWidth / window.innerHeight;
+        camera = new THREE.PerspectiveCamera(45, aspectRatio, 1, 2000);
+        camera.position.set(100, 200, 300); // Set camera position for an overview
+
+        // 3. Renderer Setup
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true; 
+        container.appendChild(renderer.domElement);
+
+        // 4. Lighting Setup
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5)); // Soft ambient light
+
+        const light = new THREE.DirectionalLight(0xffffff, 1.0);
+        light.position.set(100, 400, 150);
+        light.castShadow = true;
+        light.shadow.mapSize.width = 1024;
+        light.shadow.mapSize.height = 1024;
+        scene.add(light);
+
+        // 5. Ground Plane (for shadows)
+        const mesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(2000, 2000),
+            new THREE.MeshPhongMaterial({ color: 0x4a5568, depthWrite: false })
+        );
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+
+        // 6. Orbit Controls (allow user to rotate and zoom the scene)
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 100, 0); // Focus the camera target on where the model will stand
+        controls.update();
+
+        // Load the FBX model
+        loadModel();
+
+        // Handle window resizing
+        window.addEventListener('resize', onWindowResize);
+    }
+
+    // Function to load the FBX model and its animation
+    function loadModel() {
+        const loader = new THREE.FBXLoader();
+        
+        loader.load(MODEL_URL, function (object) {
+            
+            // 1. Model Cleanup and Setup
+            object.traverse(function (child) {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+
+            // 2. Animation Mixer Setup (controls the playback of animations)
+            mixer = new THREE.AnimationMixer(object);
+            
+            // 3. Get the first animation clip found in the model
+            const clip = object.animations[0];
+            
+            if (clip) {
+                const action = mixer.clipAction(clip);
+                action.play(); // Start the animation
+                console.log("Animation clip found and started.");
+                
+                // Hide the loading screen after the model is loaded and animation starts
+                loadingOverlay.style.display = 'none'; 
+            } else {
+                 console.warn("FBX model loaded, but no animation clip was found.");
+                 loadingOverlay.innerHTML = '<div class="text-red-500 text-2xl font-semibold mb-4">Model Loaded, No Animation Found.</div><p class="text-gray-400 text-sm max-w-lg text-center">The model was loaded successfully, but it did not contain an animation clip. Check your FBX export settings.</p>';
+            }
+
+            // Scale and position the model
+            object.scale.set(1, 1, 1);
+            object.position.y = 0; 
+            scene.add(object);
+
+            // Start the main loop
+            animate();
+
+        }, onProgress, onError);
+    }
+
+    // Progress handler
+    function onProgress(xhr) {
+        if (xhr.lengthComputable) {
+            const percentComplete = xhr.loaded / xhr.total * 100;
+            console.log(Math.round(percentComplete, 2) + '% loaded');
+        }
+    }
+
+    // Error handler
+    function onError(error) {
+        console.error('An error happened during loading:', error);
+        loadingOverlay.innerHTML = `<div class="text-red-500 text-2xl font-semibold mb-4">Error Loading Model</div><p class="text-gray-400 text-sm max-w-lg text-center">Could not load model from ${MODEL_URL}. Ensure your local server is running and the file path is correct. Error: ${error.message}</p>`;
+    }
+
+    // Function to handle window resizing
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // The main render/animation loop
+    function animate() {
+        requestAnimationFrame(animate);
+
+        // Get time elapsed since the last frame
+        const delta = clock.getDelta();
+
+        // Update the animation mixer (crucial for smooth animation playback)
+        if (mixer) {
+            mixer.update(delta);
+        }
+
+        controls.update(); // Update Orbit Controls
+        renderer.render(scene, camera);
+    }
+
+    // Initialize the application when the window loads
+    window.onload = function() {
+        init();
+    };
+
+</script>
+</body>
+</html>
