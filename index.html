@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Three.js + GLTF + GSAP Example</title>
+  <title>Three.js + GLTF + GSAP + Animation</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     html, body {margin:0; height:100%; background:#0e0f12; color:#e6e7eb; font-family:sans-serif;}
     #scene {width:100%; height:100%; display:block;}
     #loading {position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#77c0ff;}
   </style>
+
   <script type="importmap">
   {
     "imports": {
@@ -49,45 +50,68 @@
     scene.add(dirLight);
 
     // Ground
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(20,20),
-      new THREE.MeshStandardMaterial({color:0x202226}));
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(20,20),
+      new THREE.MeshStandardMaterial({color:0x202226})
+    );
     ground.rotation.x = -Math.PI/2;
     ground.receiveShadow = true;
     scene.add(ground);
 
+    // Animation mixer
+    let mixer;
+    const clock = new THREE.Clock();
+
     // Load GLTF model
     const loader = new GLTFLoader();
-    loader.load('./model/idle.glb',(gltf)=>{
-      document.getElementById('loading').style.display='none';
+    loader.load('./model/idle.glb', (gltf) => {
+      document.getElementById('loading').style.display = 'none';
+
       const model = gltf.scene;
-      model.scale.set(1.5,1.5,1.5);
+      model.scale.set(1.5, 1.5, 1.5);
       scene.add(model);
 
-      // Animate with GSAP: simple rotation loop
+      // ---------------------------
+      // PLAY INTERNAL GLB ANIMATION
+      // ---------------------------
+      mixer = new THREE.AnimationMixer(model);
+      const clip = gltf.animations[0];
+      if (clip) {
+        const action = mixer.clipAction(clip);
+        action.play();
+      }
+
+      // GSAP rotation
       gsap.to(model.rotation, {
-        y: Math.PI*2,
+        y: Math.PI * 2,
         duration: 10,
         repeat: -1,
         ease: "linear"
       });
-    },undefined,(err)=>{
-      document.getElementById('loading').textContent='Error loading model';
+
+    }, undefined, (err) => {
+      document.getElementById('loading').textContent = 'Error loading model';
       console.error(err);
     });
 
-    // Resize
-    window.addEventListener('resize',()=>{
+    // Resize handler
+    window.addEventListener('resize', () => {
       renderer.setSize(window.innerWidth, window.innerHeight);
       camera.aspect = window.innerWidth/window.innerHeight;
       camera.updateProjectionMatrix();
     });
 
-    // Loop
+    // Animation loop
     function animate(){
       requestAnimationFrame(animate);
+
+      const delta = clock.getDelta();
+      if (mixer) mixer.update(delta);
+
       controls.update();
-      renderer.render(scene,camera);
+      renderer.render(scene, camera);
     }
+
     animate();
   </script>
 </body>
