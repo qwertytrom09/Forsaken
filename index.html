@@ -1,33 +1,25 @@
-<!Doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Three.js + GLTF + GSAP + Animation</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8">
+  <title>Three.js Player + Standing Animation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    html, body {margin:0; height:100%; background:#0e0f12; color:#e6e7eb; font-family:sans-serif;}
-    #scene {width:100%; height:100%; display:block;}
+    html, body {margin:0; height:100%; background:#0e0f12; font-family:sans-serif;}
+    canvas {display:block;}
     #loading {position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#77c0ff;}
   </style>
-
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
-    }
-  }
-  </script>
 </head>
 <body>
   <canvas id="scene"></canvas>
   <div id="loading">Loading model…</div>
 
   <script type="module">
-    import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-    import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
-    import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
-    import gsap from 'https://cdn.jsdelivr.net/npm/gsap@3.12.5/index.js';
-
+  import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+  import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+  import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+  import gsap from 'https://cdn.jsdelivr.net/npm/gsap@3.12.5/index.js';
+  
     const canvas = document.getElementById('scene');
     const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
     renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
@@ -37,78 +29,105 @@
     scene.background = new THREE.Color(0x202226);
 
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
-    camera.position.set(2.5, 1.8, 3.5);
+    camera.position.set(0, 2, 5);
 
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
-    controls.target.set(0,1,0);
 
     // Lights
-    scene.add(new THREE.HemisphereLight(0xffffff,0x404040,0.9));
-    const dirLight = new THREE.DirectionalLight(0xffffff,1.3);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x404040, 0.9));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.3);
     dirLight.position.set(5,10,7.5);
     scene.add(dirLight);
 
     // Ground
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(20,20),
+      new THREE.PlaneGeometry(50,50),
       new THREE.MeshStandardMaterial({color:0x202226})
     );
     ground.rotation.x = -Math.PI/2;
-    ground.receiveShadow = true;
     scene.add(ground);
 
-    // Animation mixer + clock
-    let mixer;
-    const clock = new THREE.Clock();
+    // Player group
+    const player = new THREE.Group();
+    scene.add(player);
 
-    // Wrapper for GSAP rotation (to avoid breaking object animations)
-    const wrapper = new THREE.Group();
-    scene.add(wrapper);
+    let mixer, action;
+    const clock = new THREE.Clock();
 
     // Load GLTF model
     const loader = new GLTFLoader();
     loader.load('./model/idle.glb', (gltf) => {
       document.getElementById('loading').style.display = 'none';
-
       const model = gltf.scene;
-      model.scale.set(1.5, 1.5, 1.5);
+      model.scale.set(1.5,1.5,1.5);
+      player.add(model);
 
-      wrapper.add(model);
-
-      // IMPORTANT FIX:
-      // Create mixer on gltf.scene so ALL animated parts move.
-      mixer = new THREE.AnimationMixer(gltf.scene);
-
-      const clip = gltf.animations[0];
-      mixer.clipAction(clip).play();
-
-      // GSAP rotation on wrapper (not model!)
-      gsap.to(wrapper.rotation, {
-        y: Math.PI * 2,
-        duration: 10,
-        repeat: -1,
-        ease: "linear"
-      });
-
+      mixer = new THREE.AnimationMixer(model);
+      action = mixer.clipAction(gltf.animations[0]);
+      action.play();
+      action.paused = false;
     }, undefined, (err) => {
       document.getElementById('loading').textContent = 'Error loading model';
       console.error(err);
     });
 
-    // Resize handler
+    // Player movement
+    const keys = {w:false, a:false, s:false, d:false};
+    window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+    window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+    function movePlayer(delta){
+      const speed = 3;
+      let moving = false;
+      if(keys.w){ player.position.z -= speed*delta; moving=true; }
+      if(keys.s){ player.position.z += speed*delta; moving=true; }
+      if(keys.a){ player.position.x -= speed*delta; moving=true; }
+      if(keys.d){ player.position.x += speed*delta; moving=true; }
+
+      // Smoothly fade animation in/out based on standing/moving
+      if(action){
+        if(moving && action.weight > 0){
+          gsap.to(action, {weight:0, duration:0.3});
+        } else if(!moving && action.weight < 1){
+          gsap.to(action, {weight:1, duration:0.3});
+        }
+      }
+
+      // Rotate player toward movement direction
+      if(moving){
+        const dir = new THREE.Vector3();
+        if(keys.w) dir.z -= 1;
+        if(keys.s) dir.z += 1;
+        if(keys.a) dir.x -= 1;
+        if(keys.d) dir.x += 1;
+        player.rotation.y = Math.atan2(dir.x, dir.z);
+      }
+    }
+
+    // Camera follow
+    function updateCamera(){
+      const offset = new THREE.Vector3(0,2,5);
+      const desired = player.position.clone().add(offset);
+      camera.position.lerp(desired, 0.1);
+      camera.lookAt(player.position);
+    }
+
+    // Resize
     window.addEventListener('resize', () => {
       renderer.setSize(window.innerWidth, window.innerHeight);
       camera.aspect = window.innerWidth/window.innerHeight;
       camera.updateProjectionMatrix();
     });
 
-    // Animation loop
+    // Animate
     function animate(){
       requestAnimationFrame(animate);
-
       const delta = clock.getDelta();
-      if (mixer) mixer.update(delta);
+      if(mixer) mixer.update(delta);
+
+      movePlayer(delta);
+      updateCamera();
 
       controls.update();
       renderer.render(scene, camera);
