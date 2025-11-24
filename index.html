@@ -8,6 +8,10 @@
     html, body {margin:0; height:100%; background:#0e0f12; color:#e6e7eb; font-family:sans-serif;}
     #scene {width:100%; height:100%; display:block;}
     #loading {position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#77c0ff;}
+    #animationControls {position:absolute; bottom:20px; left:50%; transform:translateX(-50%); display:flex; gap:10px; z-index:10;}
+    button {padding:8px 16px; background:#77c0ff; color:#0e0f12; border:none; border-radius:4px; cursor:pointer; font-weight:bold; transition:background 0.3s;}
+    button:hover {background:#5ba3d0;}
+    button.active {background:#4a90e2;}
   </style>
 
   <script type="importmap">
@@ -21,6 +25,10 @@
 <body>
   <canvas id="scene"></canvas>
   <div id="loading">Loading model…</div>
+  <div id="animationControls">
+    <button data-animation="idle.glb">Idle</button>
+    <button data-animation="walk.glb" class="active">Walk</button>
+  </div>
 
   <script type="module">
     import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
@@ -60,6 +68,8 @@
 
     // Animation mixer + clock
     let mixer;
+    let currentAction;
+    let model;
     const clock = new THREE.Clock();
 
     // Wrapper for GSAP rotation (to avoid breaking object animations)
@@ -68,32 +78,51 @@
 
     // Load GLTF model
     const loader = new GLTFLoader();
-    loader.load('./model/walk.glb', (gltf) => {
-      document.getElementById('loading').style.display = 'none';
+    
+    function loadAnimation(filename) {
+      loader.load(`./model/${filename}`, (gltf) => {
+        document.getElementById('loading').style.display = 'none';
 
-      const model = gltf.scene;
-      model.scale.set(1.5, 1.5, 1.5);
+        if (!model) {
+          model = gltf.scene;
+          model.scale.set(1.5, 1.5, 1.5);
+          wrapper.add(model);
+          mixer = new THREE.AnimationMixer(model);
 
-      wrapper.add(model);
+          gsap.to(wrapper.rotation, {
+            y: Math.PI * 2,
+            duration: 10,
+            repeat: -1,
+            ease: "linear"
+          });
+        }
 
-      // IMPORTANT FIX:
-      // Create mixer on gltf.scene so ALL animated parts move.
-      mixer = new THREE.AnimationMixer(gltf.scene);
+        const newAction = mixer.clipAction(gltf.animations[0]);
 
-      const clip = gltf.animations[0];
-      mixer.clipAction(clip).play();
+        if (currentAction) {
+          currentAction.fadeOut(0.5);
+        }
 
-      // GSAP rotation on wrapper (not model!)
-      gsap.to(wrapper.rotation, {
-        y: Math.PI * 2,
-        duration: 10,
-        repeat: -1,
-        ease: "linear"
+        newAction.reset().fadeIn(0.5).play();
+        currentAction = newAction;
+
+      }, undefined, (err) => {
+        document.getElementById('loading').textContent = 'Error loading model';
+        console.error(err);
       });
-
-    }, undefined, (err) => {
-      document.getElementById('loading').textContent = 'Error loading model';
-      console.error(err);
+    }
+    
+    loadAnimation('walk.glb');
+    
+    const buttons = document.querySelectorAll('#animationControls button');
+    buttons.forEach(button => {
+      button.addEventListener('click', (e) => {
+        const animation = e.target.dataset.animation;
+        loadAnimation(animation);
+        
+        buttons.forEach(btn => btn.classList.remove('active'));
+        e.target.classList.add('active');
+      });
     });
 
     // Resize handler
