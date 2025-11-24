@@ -135,7 +135,6 @@ function getTouchOffset(touch){
   return {x:dx, y:dy};
 }
 
-// Multi-touch management
 leftJoyEl.addEventListener("touchstart", e=>{
   for(const t of e.changedTouches){
     if(!leftJoy.active && t.clientX < window.innerWidth/2){
@@ -241,9 +240,9 @@ function animate(){
       let moveDir=new THREE.Vector3().addScaledVector(camF,forward).addScaledVector(camR,sideways);
       const mag=moveDir.length(); if(mag>1) moveDir.normalize();
 
-      const targetRot=Math.atan2(moveDir.x,moveDir.z);
+      const targetRot=Math.atan2(moveDir.x, moveDir.z) + Math.PI; // <-- Fix 180° issue
       let rotDiff=normalizeAngle(targetRot-playerState.rot);
-      playerState.rot+=rotDiff*0.2;
+      playerState.rot += rotDiff*0.2;
       playerState.rot=normalizeAngle(playerState.rot);
       model.rotation.y=playerState.rot;
 
