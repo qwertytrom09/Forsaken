@@ -1,149 +1,277 @@
-<!Doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Three.js + GLTF + GSAP + Animation</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    html, body {margin:0; height:100%; background:#0e0f12; color:#e6e7eb; font-family:sans-serif;}
-    #scene {width:100%; height:100%; display:block;}
-    #loading {position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#77c0ff;}
-    #animationControls {position:absolute; bottom:20px; left:50%; transform:translateX(-50%); display:flex; gap:10px; z-index:10;}
-    button {padding:8px 16px; background:#77c0ff; color:#0e0f12; border:none; border-radius:4px; cursor:pointer; font-weight:bold; transition:background 0.3s;}
-    button:hover {background:#5ba3d0;}
-    button.active {background:#4a90e2;}
-  </style>
+<meta charset="UTF-8" />
+<title>Roblox-Style Movement + Mobile Multi-Touch Joystick</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
-    }
-  }
-  </script>
+<style>
+html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:white; -webkit-user-select:none; touch-action:none;}
+#scene {width:100%; height:100%; display:block;}
+#loading {position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#77c0ff; font-size:20px;}
+#hud {position:absolute; top:20px; left:20px; color:#77c0ff; font-size:14px; background:rgba(0,0,0,0.4); padding:6px 10px; border-radius:6px; z-index:30;}
+
+/* Left joystick */
+#leftJoy {
+  position:absolute; left:40px; bottom:40px;
+  width:120px; height:120px;
+  border-radius:50%; background: rgba(255,255,255,0.12); border:2px solid rgba(255,255,255,0.25);
+  touch-action:none; z-index:20;
+}
+#leftJoy .stick {
+  position:absolute; width:50px; height:50px; border-radius:50%; background: rgba(255,255,255,0.35);
+  left:35px; top:35px;
+  touch-action:none;
+}
+#touch-hint {
+  position:absolute; left:50%; bottom:18px; transform:translateX(-50%);
+  color:rgba(119,192,255,0.9); font-size:12px;
+  background: rgba(0,0,0,0.35); padding:6px 10px; border-radius:8px; z-index:20;
+}
+</style>
+
+<script type="importmap">
+{
+  "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" }
+}
+</script>
 </head>
 <body>
-  <canvas id="scene"></canvas>
-  <div id="loading">Loading model…</div>
-  <div id="animationControls">
-    <button data-animation="idle.glb">Idle</button>
-    <button data-animation="walk.glb" class="active">Walk</button>
-  </div>
+<canvas id="scene"></canvas>
+<div id="loading">Loading player…</div>
+<div id="hud">Right-click + drag to rotate camera | WASD to move</div>
 
-  <script type="module">
-    import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-    import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
-    import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
-    import gsap from 'https://cdn.jsdelivr.net/npm/gsap@3.12.5/index.js';
+<!-- Left joystick -->
+<div id="leftJoy">
+  <div class="stick" id="leftStick"></div>
+</div>
 
-    const canvas = document.getElementById('scene');
-    const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-    renderer.setSize(window.innerWidth, window.innerHeight);
+<div id="touch-hint">Left: move • Right: look</div>
 
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x202226);
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
-    camera.position.set(2.5, 1.8, 3.5);
+// ---------- Hide joystick on PC ----------
+if (!('ontouchstart' in window)) {
+  document.getElementById('leftJoy').style.display = 'none';
+  document.getElementById('touch-hint').style.display = 'none';
+}
 
-    const controls = new OrbitControls(camera, canvas);
-    controls.enableDamping = true;
-    controls.target.set(0,1,0);
+// ---------- Three.js setup ----------
+const canvas = document.getElementById("scene");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(window.innerWidth, window.innerHeight);
 
-    // Lights
-    scene.add(new THREE.HemisphereLight(0xffffff,0x404040,0.9));
-    const dirLight = new THREE.DirectionalLight(0xffffff,1.3);
-    dirLight.position.set(5,10,7.5);
-    scene.add(dirLight);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1d22);
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight,0.1,500);
 
-    // Ground
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(20,20),
-      new THREE.MeshStandardMaterial({color:0x202226})
-    );
-    ground.rotation.x = -Math.PI/2;
-    ground.receiveShadow = true;
-    scene.add(ground);
+scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
+const light = new THREE.DirectionalLight(0xffffff,1.4);
+light.position.set(5,10,7);
+scene.add(light);
 
-    // Animation mixer + clock
-    let mixer;
-    let currentAction;
-    let model;
-    const clock = new THREE.Clock();
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(100,100), new THREE.MeshStandardMaterial({color:0x202226}));
+ground.rotation.x=-Math.PI/2;
+scene.add(ground);
 
-    // Wrapper for GSAP rotation (to avoid breaking object animations)
-    const wrapper = new THREE.Group();
-    scene.add(wrapper);
-
-    // Load GLTF model
-    const loader = new GLTFLoader();
-    
-    function loadAnimation(filename) {
-      loader.load(`./model/${filename}`, (gltf) => {
-        document.getElementById('loading').style.display = 'none';
-
-        if (!model) {
-          model = gltf.scene;
-          model.scale.set(1.5, 1.5, 1.5);
-          wrapper.add(model);
-          mixer = new THREE.AnimationMixer(model);
-
-          gsap.to(wrapper.rotation, {
-            y: Math.PI * 2,
-            duration: 10,
-            repeat: -1,
-            ease: "linear"
-          });
-        }
-
-        const newAction = mixer.clipAction(gltf.animations[0]);
-
-        if (currentAction) {
-          currentAction.fadeOut(0.5);
-        }
-
-        newAction.reset().fadeIn(0.5).play();
-        currentAction = newAction;
-
-      }, undefined, (err) => {
-        document.getElementById('loading').textContent = 'Error loading model';
-        console.error(err);
-      });
-    }
-    
-    loadAnimation('walk.glb');
-    
-    const buttons = document.querySelectorAll('#animationControls button');
-    buttons.forEach(button => {
-      button.addEventListener('click', (e) => {
-        const animation = e.target.dataset.animation;
-        loadAnimation(animation);
-        
-        buttons.forEach(btn => btn.classList.remove('active'));
-        e.target.classList.add('active');
-      });
+// ---------- Player ----------
+let model, mixer, idleAction, walkAction;
+const loader = new GLTFLoader();
+const playerState = { pos:new THREE.Vector3(0,0,0), rot:0, moving:false };
+function loadPlayer(){
+  loader.load("./model/idle.glb", idleGLB=>{
+    model=idleGLB.scene;
+    model.scale.set(0.5,0.5,0.5);
+    scene.add(model);
+    mixer=new THREE.AnimationMixer(model);
+    idleAction=mixer.clipAction(idleGLB.animations[0]);
+    idleAction.play();
+    loader.load("./model/walk.glb", walkGLB=>{
+      walkAction=mixer.clipAction(walkGLB.animations[0]);
+      document.getElementById("loading").style.display="none";
     });
+  });
+}
+loadPlayer();
 
-    // Resize handler
-    window.addEventListener('resize', () => {
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      camera.aspect = window.innerWidth/window.innerHeight;
-      camera.updateProjectionMatrix();
-    });
+// ---------- Camera ----------
+let camYaw=0, camPitch=-0.35, camDist=6, camHeight=3;
 
-    // Animation loop
-    function animate(){
-      requestAnimationFrame(animate);
+// ---------- Input ----------
+const keys = {KeyW:false, KeyA:false, KeyS:false, KeyD:false};
+window.addEventListener("keydown",e=>{if(keys[e.code]!==undefined) keys[e.code]=true;});
+window.addEventListener("keyup",e=>{if(keys[e.code]!==undefined) keys[e.code]=false;});
 
-      const delta = clock.getDelta();
-      if (mixer) mixer.update(delta);
+// Mouse look (desktop)
+let dragging=false;
+document.addEventListener("contextmenu", e=>e.preventDefault());
+document.addEventListener("mousedown", e=>{if(e.button===2) dragging=true;});
+document.addEventListener("mouseup", ()=>dragging=false);
+document.addEventListener("mousemove", e=>{
+  if(!dragging) return;
+  camYaw -= e.movementX*0.003;
+  camPitch += e.movementY*0.003;
+  camPitch=Math.max(-1.2, Math.min(0.4, camPitch));
+});
 
-      controls.update();
-      renderer.render(scene, camera);
+// ---------- Left Joystick ----------
+const leftJoyEl=document.getElementById("leftJoy");
+const leftStickEl=document.getElementById("leftStick");
+const leftJoy={active:false, id:null, x:0, y:0, max:40};
+
+function updateLeftStick(x,y){ leftStickEl.style.left=`${35+x}px`; leftStickEl.style.top=`${35+y}px`; }
+function resetLeftStick(){ updateLeftStick(0,0); }
+function getTouchOffset(touch){
+  const rect=leftJoyEl.getBoundingClientRect();
+  const cx=rect.left+rect.width/2;
+  const cy=rect.top+rect.height/2;
+  let dx=touch.clientX-cx;
+  let dy=touch.clientY-cy;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  if(dist>leftJoy.max){ const s=leftJoy.max/dist; dx*=s; dy*=s; }
+  return {x:dx, y:dy};
+}
+
+// Multi-touch management
+leftJoyEl.addEventListener("touchstart", e=>{
+  for(const t of e.changedTouches){
+    if(!leftJoy.active && t.clientX < window.innerWidth/2){
+      leftJoy.active=true;
+      leftJoy.id=t.identifier;
+      const o=getTouchOffset(t);
+      leftJoy.x=o.x; leftJoy.y=o.y;
+      updateLeftStick(leftJoy.x,leftJoy.y);
+    }
+  }
+},{passive:false});
+
+leftJoyEl.addEventListener("touchmove", e=>{
+  for(const t of e.changedTouches){
+    if(leftJoy.active && t.identifier===leftJoy.id){
+      const o=getTouchOffset(t);
+      leftJoy.x=o.x; leftJoy.y=o.y;
+      updateLeftStick(leftJoy.x,leftJoy.y);
+    }
+  }
+},{passive:false});
+
+function endLeftTouch(e){
+  for(const t of e.changedTouches){
+    if(leftJoy.active && t.identifier===leftJoy.id){
+      leftJoy.active=false; leftJoy.id=null; leftJoy.x=0; leftJoy.y=0;
+      resetLeftStick();
+    }
+  }
+}
+leftJoyEl.addEventListener("touchend", endLeftTouch, {passive:false});
+leftJoyEl.addEventListener("touchcancel", endLeftTouch, {passive:false});
+
+// ---------- Right side touch look ----------
+let touchLook={active:false, id:null, lastX:0, lastY:0};
+document.addEventListener("touchstart", e=>{
+  for(const t of e.changedTouches){
+    if(t.clientX >= window.innerWidth/2 && !touchLook.active){
+      touchLook.active=true;
+      touchLook.id=t.identifier;
+      touchLook.lastX=t.clientX;
+      touchLook.lastY=t.clientY;
+    }
+  }
+},{passive:false});
+
+document.addEventListener("touchmove", e=>{
+  for(const t of e.changedTouches){
+    if(touchLook.active && t.identifier===touchLook.id){
+      const dx=t.clientX-touchLook.lastX;
+      const dy=t.clientY-touchLook.lastY;
+      camYaw-=dx*0.003;
+      camPitch+=dy*0.003;
+      camPitch=Math.max(-1.2, Math.min(0.4, camPitch));
+      touchLook.lastX=t.clientX;
+      touchLook.lastY=t.clientY;
+    }
+  }
+},{passive:false});
+
+document.addEventListener("touchend", e=>{
+  for(const t of e.changedTouches){
+    if(touchLook.active && t.identifier===touchLook.id) touchLook.active=false;
+  }
+},{passive:false});
+document.addEventListener("touchcancel", e=>{
+  for(const t of e.changedTouches){
+    if(touchLook.active && t.identifier===touchLook.id) touchLook.active=false;
+  }
+},{passive:false});
+
+// ---------- Animation ----------
+const clock = new THREE.Clock();
+const moveSpeed=10;
+function normalizeAngle(a){ return Math.atan2(Math.sin(a), Math.cos(a)); }
+function setAnim(target){
+  if(!idleAction||!walkAction) return;
+  if(target==="walk" && !playerState.moving){ idleAction.fadeOut(0.2); walkAction.reset().fadeIn(0.2).play(); }
+  else if(target==="idle" && playerState.moving){ walkAction.fadeOut(0.2); idleAction.reset().fadeIn(0.2).play(); }
+}
+
+// ---------- Animate ----------
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=clock.getDelta();
+  if(mixer) mixer.update(dt);
+
+  if(model){
+    let forward=(keys.KeyW?1:0)+(keys.KeyS?-1:0);
+    let sideways=(keys.KeyD?1:0)+(keys.KeyA?-1:0);
+
+    if(leftJoy.active){
+      forward=-leftJoy.y/leftJoy.max;
+      sideways=leftJoy.x/leftJoy.max;
+      if(Math.abs(forward)<0.05) forward=0;
+      if(Math.abs(sideways)<0.05) sideways=0;
     }
 
-    animate();
-  </script>
+    const moving=Math.abs(forward)>0 || Math.abs(sideways)>0;
+    if(moving){
+      const camF=new THREE.Vector3(Math.sin(camYaw),0,Math.cos(camYaw));
+      const camR=new THREE.Vector3(-Math.cos(camYaw),0,Math.sin(camYaw));
+      let moveDir=new THREE.Vector3().addScaledVector(camF,forward).addScaledVector(camR,sideways);
+      const mag=moveDir.length(); if(mag>1) moveDir.normalize();
+
+      const targetRot=Math.atan2(moveDir.x,moveDir.z);
+      let rotDiff=normalizeAngle(targetRot-playerState.rot);
+      playerState.rot+=rotDiff*0.2;
+      playerState.rot=normalizeAngle(playerState.rot);
+      model.rotation.y=playerState.rot;
+
+      playerState.pos.add(moveDir.multiplyScalar(moveSpeed*dt));
+      model.position.copy(playerState.pos);
+      setAnim("walk");
+      playerState.moving=true;
+    } else { setAnim("idle"); playerState.moving=false; }
+
+    const camX=playerState.pos.x-Math.sin(camYaw)*camDist;
+    const camZ=playerState.pos.z-Math.cos(camYaw)*camDist;
+    const camY=playerState.pos.y+camHeight+Math.sin(camPitch)*camDist;
+    camera.position.set(camX,camY,camZ);
+    camera.lookAt(playerState.pos.x,playerState.pos.y+2,playerState.pos.z);
+  }
+  renderer.render(scene,camera);
+}
+animate();
+
+// ---------- Resize ----------
+window.addEventListener("resize", ()=>{
+  renderer.setSize(window.innerWidth,window.innerHeight);
+  camera.aspect=window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+// Center left stick
+updateLeftStick(0,0);
+</script>
 </body>
 </html>
