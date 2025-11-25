@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
 <style>
-html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:white; -webkit-user-select:none; touch-action:none;}
+html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:white; -webkit-user-select:none; user-select:none; touch-action:none;}
 #scene {width:100%; height:100%; display:block;}
 #loading {position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#77c0ff; font-size:20px;}
 #hud {position:absolute; top:20px; left:20px; color:#77c0ff; font-size:14px; background:rgba(0,0,0,0.4); padding:6px 10px; border-radius:6px; z-index:30;}
@@ -28,6 +28,52 @@ html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:wh
   color:rgba(119,192,255,0.9); font-size:12px;
   background: rgba(0,0,0,0.35); padding:6px 10px; border-radius:8px; z-index:20;
 }
+
+/* Settings menu */
+#settingsBtn {
+  position:absolute; top:20px; right:20px; z-index:31;
+  background:rgba(119,192,255,0.2); border:1px solid rgba(119,192,255,0.5);
+  color:#77c0ff; padding:8px 12px; border-radius:6px; cursor:pointer; font-size:12px;
+  transition:all 0.2s;
+}
+#settingsBtn:hover { background:rgba(119,192,255,0.4); border-color:rgba(119,192,255,0.8); }
+
+#settingsOverlay {
+  display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+  background:rgba(0,0,0,0.7); z-index:100; backdrop-filter:blur(2px);
+}
+#settingsMenu {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  background:rgba(20,22,28,0.95); border:2px solid rgba(119,192,255,0.3);
+  padding:30px; border-radius:12px; max-width:400px; width:90%;
+  box-shadow:0 8px 32px rgba(0,0,0,0.5);
+}
+#settingsMenu h2 {
+  margin:0 0 20px 0; color:#77c0ff; font-size:18px;
+}
+.setting-row {
+  margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;
+}
+.setting-row label { color:#aaa; font-size:12px; }
+.setting-row input[type="range"] {
+  width:60%; cursor:pointer;
+}
+.setting-row input[type="checkbox"] {
+  cursor:pointer; width:18px; height:18px;
+}
+.setting-row select {
+  background:rgba(255,255,255,0.08); border:1px solid rgba(119,192,255,0.3);
+  color:#77c0ff; padding:6px 8px; border-radius:4px; cursor:pointer; font-size:12px;
+}
+#settingsMenu button {
+  background:rgba(119,192,255,0.2); border:1px solid rgba(119,192,255,0.5);
+  color:#77c0ff; padding:8px 12px; border-radius:6px; cursor:pointer; margin-right:8px;
+  transition:all 0.2s; font-size:12px;
+}
+#settingsMenu button:hover { background:rgba(119,192,255,0.4); }
+#settingsMenu .button-group {
+  margin-top:20px; display:flex; justify-content:flex-end;
+}
 </style>
 
 <script type="importmap">
@@ -40,6 +86,7 @@ html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:wh
 <canvas id="scene"></canvas>
 <div id="loading">Loading player…</div>
 <div id="hud">Right-click + drag to rotate camera | WASD to move</div>
+<button id="settingsBtn">⚙ Settings</button>
 
 <!-- Left joystick -->
 <div id="leftJoy">
@@ -48,9 +95,90 @@ html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:wh
 
 <div id="touch-hint">Left: move • Right: look</div>
 
+<!-- Settings menu -->
+<div id="settingsOverlay">
+  <div id="settingsMenu">
+    <h2>Settings</h2>
+    <div class="setting-row">
+      <label>Mouse Sensitivity</label>
+      <input type="range" id="mouseSensitivity" min="0.5" max="3" step="0.1" value="1">
+    </div>
+    <div class="setting-row">
+      <label>Gamepad Deadzone</label>
+      <input type="range" id="gamepadDeadzone" min="0" max="0.5" step="0.05" value="0.1">
+    </div>
+    <div class="setting-row">
+      <label>Gamepad Sensitivity</label>
+      <input type="range" id="gamepadSensitivity" min="0.5" max="3" step="0.1" value="1">
+    </div>
+    <div class="setting-row">
+      <label>Graphics Quality</label>
+      <select id="graphicsQuality">
+        <option value="low">Low</option>
+        <option value="medium" selected>Medium</option>
+        <option value="high">High</option>
+      </select>
+    </div>
+    <div class="setting-row">
+      <label>Show FPS</label>
+      <input type="checkbox" id="showFPS">
+    </div>
+    <div class="button-group">
+      <button id="settingsClose">Close</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import * as THREE from "three";
 import { GLTFLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+
+// ---------- Settings Management ----------
+const settings = {
+  mouseSensitivity: 1,
+  gamepadDeadzone: 0.1,
+  gamepadSensitivity: 1,
+  graphicsQuality: 'medium',
+  showFPS: false
+};
+
+function loadSettings(){
+  const saved = localStorage.getItem('gameSettings');
+  if(saved) Object.assign(settings, JSON.parse(saved));
+  updateSettingsUI();
+}
+
+function saveSettings(){
+  localStorage.setItem('gameSettings', JSON.stringify(settings));
+}
+
+function updateSettingsUI(){
+  document.getElementById('mouseSensitivity').value = settings.mouseSensitivity;
+  document.getElementById('gamepadDeadzone').value = settings.gamepadDeadzone;
+  document.getElementById('gamepadSensitivity').value = settings.gamepadSensitivity;
+  document.getElementById('graphicsQuality').value = settings.graphicsQuality;
+  document.getElementById('showFPS').checked = settings.showFPS;
+}
+
+document.getElementById('mouseSensitivity').addEventListener('change', e=>{ settings.mouseSensitivity=parseFloat(e.target.value); saveSettings(); });
+document.getElementById('gamepadDeadzone').addEventListener('change', e=>{ settings.gamepadDeadzone=parseFloat(e.target.value); saveSettings(); });
+document.getElementById('gamepadSensitivity').addEventListener('change', e=>{ settings.gamepadSensitivity=parseFloat(e.target.value); saveSettings(); });
+document.getElementById('graphicsQuality').addEventListener('change', e=>{ settings.graphicsQuality=e.target.value; saveSettings(); });
+document.getElementById('showFPS').addEventListener('change', e=>{ settings.showFPS=e.target.checked; saveSettings(); });
+
+document.getElementById('settingsBtn').addEventListener('click', ()=>{
+  document.getElementById('settingsOverlay').style.display='block';
+});
+
+document.getElementById('settingsClose').addEventListener('click', ()=>{
+  document.getElementById('settingsOverlay').style.display='none';
+});
+
+document.getElementById('settingsOverlay').addEventListener('click', e=>{
+  if(e.target.id==='settingsOverlay') document.getElementById('settingsOverlay').style.display='none';
+});
+
+loadSettings();
 
 // ---------- Hide joystick on PC ----------
 if (!('ontouchstart' in window)) {
@@ -77,6 +205,53 @@ const ground = new THREE.Mesh(new THREE.PlaneGeometry(100,100), new THREE.MeshSt
 ground.rotation.x=-Math.PI/2;
 scene.add(ground);
 
+// Add terrain features
+const geometry = new THREE.BoxGeometry(8,3,8);
+const material = new THREE.MeshStandardMaterial({color:0x3a3d42});
+
+// Hills/rocks
+const rock1 = new THREE.Mesh(geometry, material);
+rock1.position.set(15, 1.5, 20);
+scene.add(rock1);
+
+const rock2 = new THREE.Mesh(geometry, material);
+rock2.position.set(-20, 1.5, 15);
+scene.add(rock2);
+
+const rock3 = new THREE.Mesh(geometry, material);
+rock3.position.set(0, 1.5, -25);
+scene.add(rock3);
+
+// Structures
+const pillarGeom = new THREE.CylinderGeometry(2,2,5,8);
+const pillarMat = new THREE.MeshStandardMaterial({color:0x4a5563});
+const pillar1 = new THREE.Mesh(pillarGeom, pillarMat);
+pillar1.position.set(-15, 2.5, -15);
+scene.add(pillar1);
+
+const pillar2 = new THREE.Mesh(pillarGeom, pillarMat);
+pillar2.position.set(25, 2.5, 0);
+scene.add(pillar2);
+
+// Platform
+const platformGeom = new THREE.BoxGeometry(12,0.5,12);
+const platformMat = new THREE.MeshStandardMaterial({color:0x5a6370});
+const platform = new THREE.Mesh(platformGeom, platformMat);
+platform.position.set(-35, 2, 30);
+scene.add(platform);
+
+// Walls
+const wallGeom = new THREE.BoxGeometry(20,4,1);
+const wallMat = new THREE.MeshStandardMaterial({color:0x454a52});
+const wall1 = new THREE.Mesh(wallGeom, wallMat);
+wall1.position.set(30, 2, -30);
+scene.add(wall1);
+
+const wall2 = new THREE.Mesh(wallGeom, wallMat);
+wall2.position.set(-30, 2, 30);
+wall2.rotation.y = Math.PI/2;
+scene.add(wall2);
+
 // ---------- Player ----------
 let model, mixer, idleAction, walkAction;
 const loader = new GLTFLoader();
@@ -84,13 +259,14 @@ const playerState = { pos:new THREE.Vector3(0,0,0), rot:0, moving:false };
 function loadPlayer(){
   loader.load("./model/idle.glb", idleGLB=>{
     model=idleGLB.scene;
-    model.scale.set(0.5,0.5,0.5);
+    model.scale.set(0.35,0.35,0.35);
     scene.add(model);
     mixer=new THREE.AnimationMixer(model);
     idleAction=mixer.clipAction(idleGLB.animations[0]);
     idleAction.play();
     loader.load("./model/walk.glb", walkGLB=>{
       walkAction=mixer.clipAction(walkGLB.animations[0]);
+      walkAction.timeScale=2;
       document.getElementById("loading").style.display="none";
     });
   });
@@ -112,10 +288,20 @@ document.addEventListener("mousedown", e=>{if(e.button===2) dragging=true;});
 document.addEventListener("mouseup", ()=>dragging=false);
 document.addEventListener("mousemove", e=>{
   if(!dragging) return;
-  camYaw -= e.movementX*0.003;
-  camPitch += e.movementY*0.003;
+  camYaw -= e.movementX*0.003*settings.mouseSensitivity;
+  camPitch += e.movementY*0.003*settings.mouseSensitivity;
   camPitch=Math.max(-1.2, Math.min(0.4, camPitch));
 });
+
+// ---------- Gamepad support ----------
+const gamepad={active:null};
+function updateGamepadInput(){
+  const gamepads=navigator.getGamepads();
+  if(!gamepads[0]){gamepad.active=null; return;}
+  gamepad.active=gamepads[0];
+}
+window.addEventListener('gamepadconnected', e=>{ console.log('Gamepad connected:', e.gamepad.id); });
+window.addEventListener('gamepaddisconnected', e=>{ if(gamepad.active?.index===e.gamepad.index) gamepad.active=null; });
 
 // ---------- Left Joystick ----------
 const leftJoyEl=document.getElementById("leftJoy");
@@ -208,7 +394,7 @@ document.addEventListener("touchcancel", e=>{
 
 // ---------- Animation ----------
 const clock = new THREE.Clock();
-const moveSpeed=10;
+const moveSpeed=5;
 function normalizeAngle(a){ return Math.atan2(Math.sin(a), Math.cos(a)); }
 function setAnim(target){
   if(!idleAction||!walkAction) return;
@@ -217,10 +403,15 @@ function setAnim(target){
 }
 
 // ---------- Animate ----------
+let fpsCounter=0, fpsDisplay=0;
 function animate(){
   requestAnimationFrame(animate);
   const dt=clock.getDelta();
   if(mixer) mixer.update(dt);
+  
+  updateGamepadInput();
+  fpsCounter++;
+  if(fpsCounter%10===0) fpsDisplay=Math.round(1/dt);
 
   if(model){
     let forward=(keys.KeyW?1:0)+(keys.KeyS?-1:0);
@@ -231,6 +422,29 @@ function animate(){
       sideways=leftJoy.x/leftJoy.max;
       if(Math.abs(forward)<0.05) forward=0;
       if(Math.abs(sideways)<0.05) sideways=0;
+    }
+    
+    if(gamepad.active){
+      const lx=gamepad.active.axes[0];
+      const ly=gamepad.active.axes[1];
+      const rx=gamepad.active.axes[2];
+      const ry=gamepad.active.axes[3];
+      const deadzone=settings.gamepadDeadzone;
+      
+      const lmag=Math.sqrt(lx*lx+ly*ly);
+      if(lmag>deadzone){
+        const norm=(lmag-deadzone)/(1-deadzone);
+        forward=-ly/lmag*norm;
+        sideways=lx/lmag*norm;
+      }
+      
+      const rmag=Math.sqrt(rx*rx+ry*ry);
+      if(rmag>deadzone){
+        const norm=(rmag-deadzone)/(1-deadzone);
+        camYaw-=rx*norm*0.06*settings.gamepadSensitivity;
+        camPitch+=ry*norm*0.06*settings.gamepadSensitivity;
+        camPitch=Math.max(-1.2, Math.min(0.4, camPitch));
+      }
     }
 
     const moving=Math.abs(forward)>0 || Math.abs(sideways)>0;
@@ -259,6 +473,11 @@ function animate(){
     camera.lookAt(playerState.pos.x,playerState.pos.y+2,playerState.pos.z);
   }
   renderer.render(scene,camera);
+  
+  if(settings.showFPS){
+    const hud=document.getElementById('hud');
+    hud.textContent=`FPS: ${fpsDisplay} | Right-click + drag to rotate camera | WASD to move | Gamepad: ${gamepad.active?'✓':'✗'}`;
+  }
 }
 animate();
 
