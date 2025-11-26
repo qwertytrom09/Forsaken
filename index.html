@@ -7,9 +7,11 @@
 
 <style>
 html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:white; -webkit-user-select:none; user-select:none; touch-action:none;}
-#scene {width:100%; height:100%; display:block;}
+#scene {width:100%; height:100%; display:block; touch-action:none;}
 #loading {position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#77c0ff; font-size:20px;}
 #hud {position:absolute; top:20px; left:20px; color:#77c0ff; font-size:14px; background:rgba(0,0,0,0.4); padding:6px 10px; border-radius:6px; z-index:30;}
+#shiftLockIndicator {position:absolute; top:20px; right:120px; z-index:31; background:rgba(13,16,24,0.85); border:1px solid rgba(119,192,255,0.3); color:#9fd0ff; padding:7px 14px; border-radius:999px; font-size:12px; letter-spacing:0.3px; box-shadow:0 6px 20px rgba(0,0,0,0.4); transition:background 0.3s ease, border-color 0.3s ease, color 0.3s ease, transform 0.2s ease;}
+#shiftLockIndicator.active {background:rgba(119,192,255,0.2); border-color:rgba(119,192,255,0.8); color:#fff; transform:translateY(-1px);}
 
 /* Left joystick */
 #leftJoy {
@@ -34,20 +36,32 @@ html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:wh
   position:absolute; top:20px; right:20px; z-index:31;
   background:rgba(119,192,255,0.2); border:1px solid rgba(119,192,255,0.5);
   color:#77c0ff; padding:8px 12px; border-radius:6px; cursor:pointer; font-size:12px;
-  transition:all 0.2s;
+  transition:transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow:0 8px 18px rgba(119,192,255,0.25);
 }
-#settingsBtn:hover { background:rgba(119,192,255,0.4); border-color:rgba(119,192,255,0.8); }
+#settingsBtn:hover { background:rgba(119,192,255,0.4); border-color:rgba(119,192,255,0.8); transform:translateY(-1px) scale(1.02); box-shadow:0 12px 28px rgba(119,192,255,0.35); }
 
 #settingsOverlay {
-  display:none; position:fixed; top:0; left:0; right:0; bottom:0;
-  background:rgba(0,0,0,0.7); z-index:100; backdrop-filter:blur(2px);
+  position:fixed; top:0; left:0; right:0; bottom:0;
+  background:rgba(0,0,0,0.7); z-index:100; backdrop-filter:blur(6px);
+  display:flex; align-items:center; justify-content:center;
+  opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity 0.35s ease, visibility 0s linear 0.35s;
+}
+#settingsOverlay.visible {
+  opacity:1; visibility:visible; pointer-events:auto;
+  transition:opacity 0.35s ease;
 }
 #settingsMenu {
-  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  position:relative;
   background:rgba(20,22,28,0.95); border:2px solid rgba(119,192,255,0.3);
   padding:30px; border-radius:12px; max-width:400px; width:90%;
   box-shadow:0 8px 32px rgba(0,0,0,0.5);
+  transform:translateY(20px) scale(0.96);
+  opacity:0;
+  transition:transform 0.4s cubic-bezier(0.16,1,0.3,1), opacity 0.3s ease;
 }
+#settingsOverlay.visible #settingsMenu { transform:translateY(0) scale(1); opacity:1; }
 #settingsMenu h2 {
   margin:0 0 20px 0; color:#77c0ff; font-size:18px;
 }
@@ -87,6 +101,7 @@ html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:wh
 <div id="loading">Loading player…</div>
 <div id="hud">Right-click + drag to rotate camera | WASD to move</div>
 <button id="settingsBtn">⚙ Settings</button>
+<div id="shiftLockIndicator">Ctrl Lock: Off</div>
 
 <!-- Left joystick -->
 <div id="leftJoy">
@@ -133,7 +148,16 @@ html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:wh
 import * as THREE from "three";
 import { GLTFLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 
-// ---------- Settings Management ----------
+const hud=document.getElementById('hud');
+const shiftLockIndicator=document.getElementById('shiftLockIndicator');
+const settingsOverlay=document.getElementById('settingsOverlay');
+const baseHudMessage='Right-click + drag to rotate camera | WASD to move | Hold Shift to sprint | Press Ctrl for Ctrl Lock';
+const hudState={gamepad:false};
+let shiftLockEnabled=false;
+let fpsCounter=0, fpsDisplay=0;
+let isSprinting=false;
+
+// ---------- Settings Management (in-memory) ----------
 const settings = {
   mouseSensitivity: 1,
   gamepadDeadzone: 0.1,
@@ -142,14 +166,12 @@ const settings = {
   showFPS: false
 };
 
-function loadSettings(){
-  const saved = localStorage.getItem('gameSettings');
-  if(saved) Object.assign(settings, JSON.parse(saved));
-  updateSettingsUI();
-}
-
-function saveSettings(){
-  localStorage.setItem('gameSettings', JSON.stringify(settings));
+function updateHud(){
+  if(settings.showFPS){
+    hud.textContent=`FPS: ${fpsDisplay} | Right-click + drag to rotate camera | WASD to move | Gamepad: ${hudState.gamepad?'✓':'✗'} | Ctrl Lock: ${shiftLockEnabled?'On':'Off'} | Sprint: ${isSprinting?'On':'Off'}`;
+  } else {
+    hud.textContent=`${baseHudMessage} | Ctrl Lock: ${shiftLockEnabled?'On':'Off'}`;
+  }
 }
 
 function updateSettingsUI(){
@@ -160,25 +182,24 @@ function updateSettingsUI(){
   document.getElementById('showFPS').checked = settings.showFPS;
 }
 
-document.getElementById('mouseSensitivity').addEventListener('change', e=>{ settings.mouseSensitivity=parseFloat(e.target.value); saveSettings(); });
-document.getElementById('gamepadDeadzone').addEventListener('change', e=>{ settings.gamepadDeadzone=parseFloat(e.target.value); saveSettings(); });
-document.getElementById('gamepadSensitivity').addEventListener('change', e=>{ settings.gamepadSensitivity=parseFloat(e.target.value); saveSettings(); });
-document.getElementById('graphicsQuality').addEventListener('change', e=>{ settings.graphicsQuality=e.target.value; saveSettings(); });
-document.getElementById('showFPS').addEventListener('change', e=>{ settings.showFPS=e.target.checked; saveSettings(); });
+document.getElementById('mouseSensitivity').addEventListener('change', e=>{ settings.mouseSensitivity=parseFloat(e.target.value); });
+document.getElementById('gamepadDeadzone').addEventListener('change', e=>{ settings.gamepadDeadzone=parseFloat(e.target.value); });
+document.getElementById('gamepadSensitivity').addEventListener('change', e=>{ settings.gamepadSensitivity=parseFloat(e.target.value); });
+document.getElementById('graphicsQuality').addEventListener('change', e=>{ settings.graphicsQuality=e.target.value; });
+document.getElementById('showFPS').addEventListener('change', e=>{ settings.showFPS=e.target.checked; updateHud(); });
 
-document.getElementById('settingsBtn').addEventListener('click', ()=>{
-  document.getElementById('settingsOverlay').style.display='block';
+const openSettings=()=>settingsOverlay.classList.add('visible');
+const closeSettings=()=>settingsOverlay.classList.remove('visible');
+
+document.getElementById('settingsBtn').addEventListener('click', openSettings);
+document.getElementById('settingsClose').addEventListener('click', closeSettings);
+
+settingsOverlay.addEventListener('click', e=>{
+  if(e.target===settingsOverlay) closeSettings();
 });
 
-document.getElementById('settingsClose').addEventListener('click', ()=>{
-  document.getElementById('settingsOverlay').style.display='none';
-});
-
-document.getElementById('settingsOverlay').addEventListener('click', e=>{
-  if(e.target.id==='settingsOverlay') document.getElementById('settingsOverlay').style.display='none';
-});
-
-loadSettings();
+updateSettingsUI();
+updateHud();
 
 // ---------- Hide joystick on PC ----------
 if (!('ontouchstart' in window)) {
@@ -253,22 +274,57 @@ wall2.rotation.y = Math.PI/2;
 scene.add(wall2);
 
 // ---------- Player ----------
-let model, mixer, idleAction, walkAction;
+let model, mixer, idleAction, walkAction, runAction;
 const loader = new GLTFLoader();
 const playerState = { pos:new THREE.Vector3(0,0,0), rot:0, moving:false };
+let currentAnim = 'idle';
+
 function loadPlayer(){
+  // Load idle animation first
   loader.load("./model/idle.glb", idleGLB=>{
     model=idleGLB.scene;
     model.scale.set(0.35,0.35,0.35);
+    model.rotation.y = Math.PI; // Fix 180° rotation
     scene.add(model);
     mixer=new THREE.AnimationMixer(model);
     idleAction=mixer.clipAction(idleGLB.animations[0]);
     idleAction.play();
+    currentAnim = 'idle';
+    
+    // Load walk animation
     loader.load("./model/walk.glb", walkGLB=>{
       walkAction=mixer.clipAction(walkGLB.animations[0]);
       walkAction.timeScale=2;
+      console.log('Walk animation loaded');
+      
+      
+      // Load run animation
+      loader.load("./model/run.glb", runGLB=>{
+        runAction=mixer.clipAction(runGLB.animations[0]);
+        runAction.timeScale=3.3;
+        console.log('Run animation loaded');
+        document.getElementById("loading").style.display="none";
+      }, undefined, err=>{
+        console.log('Run animation not found, using walk animation');
+        runAction = walkAction;
+        document.getElementById("loading").style.display="none";
+      });
+    }, undefined, err=>{
+      console.log('Walk animation not found');
+      walkAction = idleAction;
+      runAction = idleAction;
       document.getElementById("loading").style.display="none";
     });
+  }, undefined, err=>{
+    console.error('Model load error:', err);
+    document.getElementById("loading").textContent="Model unavailable - using fallback";
+    // Fallback: create simple geometry
+    const fallbackGeom = new THREE.CapsuleGeometry(0.5, 1, 4, 8);
+    const fallbackMat = new THREE.MeshStandardMaterial({color:0x77c0ff});
+    model = new THREE.Mesh(fallbackGeom, fallbackMat);
+    model.position.copy(playerState.pos);
+    scene.add(model);
+    setTimeout(()=>document.getElementById("loading").style.display="none", 1000);
   });
 }
 loadPlayer();
@@ -277,8 +333,11 @@ loadPlayer();
 let camYaw=0, camPitch=-0.35, camDist=6, camHeight=3;
 
 // ---------- Input ----------
-const keys = {KeyW:false, KeyA:false, KeyS:false, KeyD:false};
-window.addEventListener("keydown",e=>{if(keys[e.code]!==undefined) keys[e.code]=true;});
+const keys = {KeyW:false, KeyA:false, KeyS:false, KeyD:false, ShiftLeft:false, ShiftRight:false};
+window.addEventListener("keydown",e=>{
+  if(keys[e.code]!==undefined) keys[e.code]=true;
+  if((e.code==='ControlLeft' || e.code==='ControlRight') && !e.repeat) toggleShiftLock();
+});
 window.addEventListener("keyup",e=>{if(keys[e.code]!==undefined) keys[e.code]=false;});
 
 // Mouse look (desktop)
@@ -287,11 +346,35 @@ document.addEventListener("contextmenu", e=>e.preventDefault());
 document.addEventListener("mousedown", e=>{if(e.button===2) dragging=true;});
 document.addEventListener("mouseup", ()=>dragging=false);
 document.addEventListener("mousemove", e=>{
-  if(!dragging) return;
+  if(!dragging && !shiftLockEnabled) return;
   camYaw -= e.movementX*0.003*settings.mouseSensitivity;
   camPitch += e.movementY*0.003*settings.mouseSensitivity;
   camPitch=Math.max(-1.2, Math.min(0.4, camPitch));
 });
+
+function setShiftLockState(state){
+  shiftLockEnabled=state;
+  shiftLockIndicator.textContent=state?'Ctrl Lock: On':'Ctrl Lock: Off';
+  shiftLockIndicator.classList.toggle('active', state);
+  updateHud();
+}
+
+function toggleShiftLock(){
+  if(!canvas.requestPointerLock) return;
+  if(document.pointerLockElement===canvas){
+    document.exitPointerLock();
+  } else {
+    canvas.requestPointerLock();
+  }
+}
+
+document.addEventListener('pointerlockchange', ()=>{
+  const locked=document.pointerLockElement===canvas;
+  setShiftLockState(locked);
+  if(!locked) dragging=false;
+});
+
+document.addEventListener('pointerlockerror', ()=>setShiftLockState(false));
 
 // ---------- Gamepad support ----------
 const gamepad={active:null};
@@ -322,6 +405,7 @@ function getTouchOffset(touch){
 }
 
 leftJoyEl.addEventListener("touchstart", e=>{
+  e.preventDefault();
   for(const t of e.changedTouches){
     if(!leftJoy.active && t.clientX < window.innerWidth/2){
       leftJoy.active=true;
@@ -334,6 +418,7 @@ leftJoyEl.addEventListener("touchstart", e=>{
 },{passive:false});
 
 leftJoyEl.addEventListener("touchmove", e=>{
+  e.preventDefault();
   for(const t of e.changedTouches){
     if(leftJoy.active && t.identifier===leftJoy.id){
       const o=getTouchOffset(t);
@@ -344,6 +429,7 @@ leftJoyEl.addEventListener("touchmove", e=>{
 },{passive:false});
 
 function endLeftTouch(e){
+  e.preventDefault();
   for(const t of e.changedTouches){
     if(leftJoy.active && t.identifier===leftJoy.id){
       leftJoy.active=false; leftJoy.id=null; leftJoy.x=0; leftJoy.y=0;
@@ -395,15 +481,29 @@ document.addEventListener("touchcancel", e=>{
 // ---------- Animation ----------
 const clock = new THREE.Clock();
 const moveSpeed=5;
+const sprintSpeed=8;
 function normalizeAngle(a){ return Math.atan2(Math.sin(a), Math.cos(a)); }
 function setAnim(target){
-  if(!idleAction||!walkAction) return;
-  if(target==="walk" && !playerState.moving){ idleAction.fadeOut(0.2); walkAction.reset().fadeIn(0.2).play(); }
-  else if(target==="idle" && playerState.moving){ walkAction.fadeOut(0.2); idleAction.reset().fadeIn(0.2).play(); }
+  if(!idleAction||!walkAction||currentAnim===target) return;
+  const outgoing = currentAnim==='idle' ? idleAction : currentAnim==='walk' ? walkAction : runAction;
+  if(target==="run" && runAction){ 
+    outgoing.fadeOut(0.2); 
+    runAction.reset().fadeIn(0.1).play(); 
+    currentAnim='run';
+  }
+  else if(target==="walk"){ 
+    outgoing.fadeOut(0.2); 
+    walkAction.reset().fadeIn(0.2).play(); 
+    currentAnim='walk';
+  }
+  else if(target==="idle"){ 
+    outgoing.fadeOut(0.2); 
+    idleAction.reset().fadeIn(0.2).play(); 
+    currentAnim='idle';
+  }
 }
 
 // ---------- Animate ----------
-let fpsCounter=0, fpsDisplay=0;
 function animate(){
   requestAnimationFrame(animate);
   const dt=clock.getDelta();
@@ -416,6 +516,7 @@ function animate(){
   if(model){
     let forward=(keys.KeyW?1:0)+(keys.KeyS?-1:0);
     let sideways=(keys.KeyD?1:0)+(keys.KeyA?-1:0);
+    isSprinting = (keys.ShiftLeft || keys.ShiftRight) && (Math.abs(forward)>0 || Math.abs(sideways)>0);
 
     if(leftJoy.active){
       forward=-leftJoy.y/leftJoy.max;
@@ -454,17 +555,24 @@ function animate(){
       let moveDir=new THREE.Vector3().addScaledVector(camF,forward).addScaledVector(camR,sideways);
       const mag=moveDir.length(); if(mag>1) moveDir.normalize();
 
-      const targetRot=Math.atan2(moveDir.x, moveDir.z) + Math.PI; // <-- Fix 180° issue
+      // Fixed: correct rotation calculation
+      const targetRot=Math.atan2(moveDir.x, moveDir.z) + Math.PI;
       let rotDiff=normalizeAngle(targetRot-playerState.rot);
       playerState.rot += rotDiff*0.2;
       playerState.rot=normalizeAngle(playerState.rot);
       model.rotation.y=playerState.rot;
 
-      playerState.pos.add(moveDir.multiplyScalar(moveSpeed*dt));
+      const currentSpeed = isSprinting ? sprintSpeed : moveSpeed;
+      playerState.pos.add(moveDir.multiplyScalar(currentSpeed*dt));
       model.position.copy(playerState.pos);
-      setAnim("walk");
+      
+      if(isSprinting) {
+        setAnim("run");
+      } else {
+        setAnim("walk");
+      }
       playerState.moving=true;
-    } else { setAnim("idle"); playerState.moving=false; }
+    } else { setAnim("idle"); playerState.moving=false; isSprinting=false; }
 
     const camX=playerState.pos.x-Math.sin(camYaw)*camDist;
     const camZ=playerState.pos.z-Math.cos(camYaw)*camDist;
@@ -473,11 +581,8 @@ function animate(){
     camera.lookAt(playerState.pos.x,playerState.pos.y+2,playerState.pos.z);
   }
   renderer.render(scene,camera);
-  
-  if(settings.showFPS){
-    const hud=document.getElementById('hud');
-    hud.textContent=`FPS: ${fpsDisplay} | Right-click + drag to rotate camera | WASD to move | Gamepad: ${gamepad.active?'✓':'✗'}`;
-  }
+  hudState.gamepad=!!gamepad.active;
+  updateHud();
 }
 animate();
 
