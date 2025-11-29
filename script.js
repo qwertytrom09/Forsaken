@@ -1,5 +1,4 @@
 import './firebase.js';
-import { WebRTCMultiplayer } from './webrtc.js';
 
 import * as THREE from "three";
 import { GLTFLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
@@ -102,13 +101,14 @@ const wallMat = new THREE.MeshStandardMaterial({color:0x454a52});
 const wall1 = new THREE.Mesh(wallGeom, wallMat); wall1.position.set(30, 2, -30); scene.add(wall1);
 const wall2 = new THREE.Mesh(wallGeom, wallMat); wall2.position.set(-30, 2, 30); wall2.rotation.y=Math.PI/2; scene.add(wall2);
 
-// ---------- WebRTC Multiplayer Setup ----------
+// ---------- Firebase Multiplayer Setup ----------
 const myPlayerId = 'player_' + Math.random().toString(36).substr(2, 9);
 const otherPlayers = new Map();
 let lastUpdateTime = 0;
 const UPDATE_INTERVAL = 50;
 let multiplayerReady = false;
-let webrtcMultiplayer = null;
+let myPlayerRef = null;
+const db = window.firebaseDB;
 
 // ---------- Player ----------
 let model, mixer, idleAction, walkAction, runAction, idleSpecialAction;
@@ -178,52 +178,76 @@ function loadPlayer(){
 }
 loadPlayer();
 
-// ---------- WebRTC Multiplayer Functions ----------
+// ---------- Firebase Multiplayer Functions ----------
 function initMultiplayer() {
-  webrtcMultiplayer = new WebRTCMultiplayer(
-    myPlayerId,
-    (peerId, data) => {
-      // Handle incoming player update
-      updateOtherPlayer(peerId, data);
-    },
-    (peerId) => {
-      // Handle player leave
-      if (otherPlayers.has(peerId)) {
-        const playerData = otherPlayers.get(peerId);
+  if (!window.firebaseDB || !window.firebaseRef) {
+    console.error("Firebase not initialized yet");
+    setTimeout(initMultiplayer, 500);
+    return;
+  }
+
+  const ref = window.firebaseRef;
+  const set = window.firebaseSet;
+  const onValue = window.firebaseOnValue;
+  const onDisconnect = window.firebaseOnDisconnect;
+  const update = window.firebaseUpdate;
+
+  myPlayerRef = ref(db, `players/${myPlayerId}`);
+  const playersRef = ref(db, 'players');
+
+  onDisconnect(myPlayerRef).remove().catch(err => console.error("Disconnect handler error:", err));
+
+  set(myPlayerRef, {
+    id: myPlayerId,
+    x: playerState.pos.x,
+    y: playerState.pos.y,
+    z: playerState.pos.z,
+    rotation: playerState.rot,
+    moving: false,
+    timestamp: Date.now(),
+    health: 100,
+    stamina: 100
+  }).then(() => {
+    console.log("Player registered:", myPlayerId);
+    multiplayerReady = true;
+  }).catch(err => console.error("Error registering player:", err));
+
+  onValue(playersRef, (snapshot) => {
+    const players = snapshot.val() || {};
+    updatePlayerListUI(players);
+
+    otherPlayers.forEach((playerData, playerId) => {
+      if (!players[playerId]) {
         if (playerData.mesh) scene.remove(playerData.mesh);
         if (playerData.nameLabel) scene.remove(playerData.nameLabel);
-        otherPlayers.delete(peerId);
+        otherPlayers.delete(playerId);
       }
-      updatePlayerListUI();
-    },
-    (peerId) => {
-      // Handle player join
-      console.log('Player joined:', peerId);
-      updatePlayerListUI();
-    }
-  );
+    });
 
-  multiplayerReady = true;
-  console.log("WebRTC multiplayer initialized");
+    Object.keys(players).forEach(playerId => {
+      if (playerId !== myPlayerId) {
+        const playerData = players[playerId];
+        updateOtherPlayer(playerId, playerData);
+      }
+    });
+  }, err => console.error("Error listening to players:", err));
 
-  // Send periodic updates
   setInterval(() => {
-    if (webrtcMultiplayer && webrtcMultiplayer.connected) {
-      webrtcMultiplayer.sendPlayerUpdate({
+    if (model && multiplayerReady && myPlayerRef) {
+      update(myPlayerRef, {
         x: playerState.pos.x,
         y: playerState.pos.y,
         z: playerState.pos.z,
         rotation: playerState.rot,
-        moving: playerState.moving
-      });
+        moving: playerState.moving,
+        timestamp: Date.now()
+      }).catch(err => console.error("Update error:", err));
     }
   }, UPDATE_INTERVAL);
 }
 
 function updateOtherPlayer(playerId, data) {
-  console.log('Received update for player:', playerId, data);
   if (!otherPlayers.has(playerId)) {
-    console.log('Creating new player:', playerId);
     const playerData = {
       mesh: null,
       model: null,
@@ -332,22 +356,17 @@ function createPlayerNameLabel(playerId, playerData) {
   playerData.nameLabel = nameLabel;
 }
 
-function updatePlayerListUI() {
+function updatePlayerListUI(players) {
   const listContent = document.getElementById('playerListContent');
-  const playerCount = otherPlayers.size + 1; // +1 for self
+  const playerCount = Object.keys(players).length;
 
-  let html = `
-    <div class="player-item you">
-      <div class="player-indicator"></div>
-      <span>You</span>
-    </div>
-  `;
-
-  otherPlayers.forEach((playerData, playerId) => {
+  let html = '';
+  Object.keys(players).forEach(playerId => {
+    const isMe = playerId === myPlayerId;
     html += `
-      <div class="player-item">
+      <div class="player-item ${isMe ? 'you' : ''}">
         <div class="player-indicator"></div>
-        <span>${playerId.substring(7, 12)}</span>
+        <span>${isMe ? 'You' : playerId.substring(7, 12)}</span>
       </div>
     `;
   });
@@ -361,7 +380,6 @@ setTimeout(() => initMultiplayer(), 1500);
 // ---------- Chat System ----------
 const MAX_CHAT_MESSAGES = 50;
 const chatMessages = [];
-const db = window.firebaseDB; // Firebase database reference for chat
 
 function addChatMessage(username, message) {
   const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -435,15 +453,6 @@ const emoteAnimations = {
 
 function playEmote(emoteName) {
   if (!multiplayerReady) return;
-
-  // Send emote through WebRTC if connected, otherwise just show locally
-  if (webrtcMultiplayer && webrtcMultiplayer.connected) {
-    webrtcMultiplayer.sendPlayerUpdate({
-      type: 'emote',
-      emote: emoteName,
-      timestamp: Date.now()
-    });
-  }
 
   // Show emote in chat
   addChatMessage('System', `${myPlayerId.substring(7, 12)} ${emoteAnimations[emoteName].sound}`);
