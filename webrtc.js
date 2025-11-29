@@ -8,11 +8,12 @@ const update = window.firebaseUpdate;
 const remove = window.firebaseRemove;
 
 class WebRTCMultiplayer {
-  constructor(playerId, onPlayerUpdate, onPlayerLeave) {
+  constructor(playerId, onPlayerUpdate, onPlayerLeave, onPlayerJoin) {
     this.playerId = playerId;
     this.peers = new Map(); // peerId -> {pc, dc, connected}
     this.onPlayerUpdate = onPlayerUpdate;
     this.onPlayerLeave = onPlayerLeave;
+    this.onPlayerJoin = onPlayerJoin;
     this.roomId = 'game_room'; // Simple room for all players
     this.isHost = false;
     this.hostId = null;
@@ -77,6 +78,8 @@ class WebRTCMultiplayer {
     const players = roomData.players || {};
     const playerIds = Object.keys(players);
 
+    console.log('Room update, players:', playerIds);
+
     // Find host (oldest player)
     this.hostId = playerIds.sort((a, b) => players[a].joined - players[b].joined)[0];
     this.isHost = this.hostId === this.playerId;
@@ -85,6 +88,7 @@ class WebRTCMultiplayer {
     playerIds.forEach(peerId => {
       if (peerId !== this.playerId && !this.peers.has(peerId) && players[peerId].connected) {
         if (this.isHost || peerId < this.playerId) { // Simple ordering to avoid duplicate connections
+          console.log('Connecting to peer:', peerId);
           this.createPeerConnection(peerId);
         }
       }
@@ -144,6 +148,9 @@ class WebRTCMultiplayer {
       console.log('Data channel open with', peerId);
       this.peers.get(peerId).connected = true;
       this.connected = true;
+      if (this.onPlayerJoin) {
+        this.onPlayerJoin(peerId);
+      }
     };
 
     dc.onclose = () => {
@@ -156,6 +163,8 @@ class WebRTCMultiplayer {
         const data = JSON.parse(event.data);
         if (data.type === 'player_update') {
           this.onPlayerUpdate(peerId, data);
+        } else if (data.type === 'emote') {
+          // Handle emote if needed
         }
       } catch (e) {
         console.error('Error parsing WebRTC message:', e);

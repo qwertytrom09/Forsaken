@@ -195,6 +195,11 @@ function initMultiplayer() {
         otherPlayers.delete(peerId);
       }
       updatePlayerListUI();
+    },
+    (peerId) => {
+      // Handle player join
+      console.log('Player joined:', peerId);
+      updatePlayerListUI();
     }
   );
 
@@ -216,7 +221,9 @@ function initMultiplayer() {
 }
 
 function updateOtherPlayer(playerId, data) {
+  console.log('Received update for player:', playerId, data);
   if (!otherPlayers.has(playerId)) {
+    console.log('Creating new player:', playerId);
     const playerData = {
       mesh: null,
       model: null,
@@ -231,7 +238,7 @@ function updateOtherPlayer(playerId, data) {
       moving: data.moving || false,
       health: data.health || 100
     };
-    
+
     otherPlayers.set(playerId, playerData);
     createOtherPlayerModel(playerId, playerData, data);
   } else {
