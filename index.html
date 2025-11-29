@@ -363,10 +363,12 @@ let lastUpdateTime = 0;
 const UPDATE_INTERVAL = 50; // Update every 50ms (20 times per second)
 
 // ---------- Player ----------
-let model, mixer, idleAction, walkAction, runAction;
+let model, mixer, idleAction, walkAction, runAction, idleSpecialAction;
 const loader = new GLTFLoader();
 const playerState = { pos:new THREE.Vector3(0,0,0), rot:0, moving:false };
 let currentAnim = 'idle';
+let idleTimer = 0;
+let nextIdleSpecialTime = Math.random() * 15 + 5;
 
 function loadPlayer(){
   loader.load("./model/idle.glb", idleGLB=>{
@@ -385,7 +387,18 @@ function loadPlayer(){
       loader.load("./model/run.glb", runGLB=>{
         runAction=mixer.clipAction(runGLB.animations[0]);
         runAction.timeScale=3.3;
-        document.getElementById("loading").style.display="none";
+
+        loader.load("./model/idle_special1.glb", idleSpecialGLB=>{
+          idleSpecialAction=mixer.clipAction(idleSpecialGLB.animations[0]);
+          idleSpecialAction.loop=THREE.LoopOnce;
+          idleSpecialAction.clampWhenFinished=true;
+          document.getElementById("loading").style.display="none";
+        }, undefined, err=>{
+          console.log("Idle special animation missing, using regular idle.");
+          idleSpecialAction=null;
+          document.getElementById("loading").style.display="none";
+        });
+
       }, undefined, err=>{
         console.log("Run animation missing, using walk.");
         runAction = walkAction;
@@ -793,22 +806,30 @@ function normalizeAngle(a){ return Math.atan2(Math.sin(a),Math.cos(a)); }
 
 function setAnim(target){
   if(!idleAction||!walkAction||currentAnim===target) return;
-  const outgoing = currentAnim==='idle'?idleAction:currentAnim==='walk'?walkAction:runAction;
+  const outgoing = currentAnim==='idle'?idleAction:currentAnim==='idleSpecial'?idleSpecialAction:currentAnim==='walk'?walkAction:runAction;
 
   if(target==="run" && runAction){
     outgoing.fadeOut(0.2);
-    runAction.reset().fadeIn(0.1).play();
+    runAction.reset().fadeIn(0.05).play();
     currentAnim="run";
+    idleTimer=0;
   }
   else if(target==="walk"){
     outgoing.fadeOut(0.2);
     walkAction.reset().fadeIn(0.2).play();
     currentAnim="walk";
+    idleTimer=0;
   }
   else if(target==="idle"){
     outgoing.fadeOut(0.2);
     idleAction.reset().fadeIn(0.2).play();
     currentAnim="idle";
+    idleTimer=0;
+  }
+  else if(target==="idleSpecial" && idleSpecialAction){
+    outgoing.fadeOut(0.1);
+    idleSpecialAction.reset().fadeIn(1).play();
+    currentAnim="idleSpecial";
   }
 }
 
@@ -817,6 +838,10 @@ function animate(){
   requestAnimationFrame(animate);
   const dt=clock.getDelta();
   if(mixer) mixer.update(dt);
+
+  if(currentAnim==='idleSpecial' && idleSpecialAction && !idleSpecialAction.isRunning()){
+    setAnim("idle");
+  }
 
   updateGamepadInput();
 
@@ -900,7 +925,15 @@ function animate(){
       playerState.moving=true;
     }
     else {
-      setAnim("idle");
+      idleTimer+=dt;
+      if(idleTimer>=nextIdleSpecialTime && idleSpecialAction && currentAnim==='idle'){
+        setAnim("idleSpecial");
+        idleTimer=0;
+        nextIdleSpecialTime=Math.random()*15+5;
+      }
+      else if(currentAnim!=='idle' && currentAnim!=='idleSpecial'){
+        setAnim("idle");
+      }
       playerState.moving=false;
       isSprinting=false;
     }
