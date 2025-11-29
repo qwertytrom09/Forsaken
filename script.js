@@ -1,4 +1,5 @@
 import './firebase.js';
+import { WebRTCMultiplayer } from './webrtc.js';
 
 import * as THREE from "three";
 import { GLTFLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
@@ -101,14 +102,13 @@ const wallMat = new THREE.MeshStandardMaterial({color:0x454a52});
 const wall1 = new THREE.Mesh(wallGeom, wallMat); wall1.position.set(30, 2, -30); scene.add(wall1);
 const wall2 = new THREE.Mesh(wallGeom, wallMat); wall2.position.set(-30, 2, 30); wall2.rotation.y=Math.PI/2; scene.add(wall2);
 
-// ---------- Multiplayer Setup ----------
+// ---------- WebRTC Multiplayer Setup ----------
 const myPlayerId = 'player_' + Math.random().toString(36).substr(2, 9);
 const otherPlayers = new Map();
 let lastUpdateTime = 0;
 const UPDATE_INTERVAL = 50;
 let multiplayerReady = false;
-let myPlayerRef = null;
-const db = window.firebaseDB;
+let webrtcMultiplayer = null;
 
 // ---------- Player ----------
 let model, mixer, idleAction, walkAction, runAction, idleSpecialAction;
@@ -141,22 +141,26 @@ function loadPlayer(){
           idleSpecialAction.loop=THREE.LoopOnce;
           idleSpecialAction.clampWhenFinished=true;
           document.getElementById("loading").style.display="none";
+          initMultiplayer(); // Initialize after models load
         }, undefined, err=>{
           console.log("Idle special animation missing, using regular idle.");
           idleSpecialAction=null;
           document.getElementById("loading").style.display="none";
+          initMultiplayer();
         });
 
       }, undefined, err=>{
         console.log("Run animation missing, using walk.");
         runAction = walkAction;
         document.getElementById("loading").style.display="none";
+        initMultiplayer();
       });
 
     }, undefined, err=>{
       walkAction = idleAction;
       runAction = idleAction;
       document.getElementById("loading").style.display="none";
+      initMultiplayer();
     });
 
   }, undefined, err=>{
@@ -166,75 +170,47 @@ function loadPlayer(){
     model=new THREE.Mesh(fallbackGeom,fallbackMat);
     model.position.copy(playerState.pos);
     scene.add(model);
-    setTimeout(()=>document.getElementById("loading").style.display="none",1000);
+    setTimeout(()=>{
+      document.getElementById("loading").style.display="none";
+      initMultiplayer();
+    },1000);
   });
 }
 loadPlayer();
 
-// ---------- Multiplayer Functions ----------
+// ---------- WebRTC Multiplayer Functions ----------
 function initMultiplayer() {
-  if (!window.firebaseDB || !window.firebaseRef) {
-    console.error("Firebase not initialized yet");
-    setTimeout(initMultiplayer, 500);
-    return;
-  }
-
-  const ref = window.firebaseRef;
-  const set = window.firebaseSet;
-  const onValue = window.firebaseOnValue;
-  const onDisconnect = window.firebaseOnDisconnect;
-  const update = window.firebaseUpdate;
-
-  myPlayerRef = ref(db, `players/${myPlayerId}`);
-  const playersRef = ref(db, 'players');
-
-  onDisconnect(myPlayerRef).remove().catch(err => console.error("Disconnect handler error:", err));
-
-  set(myPlayerRef, {
-    id: myPlayerId,
-    x: playerState.pos.x,
-    y: playerState.pos.y,
-    z: playerState.pos.z,
-    rotation: playerState.rot,
-    moving: false,
-    timestamp: Date.now(),
-    health: 100,
-    stamina: 100
-  }).then(() => {
-    console.log("Player registered:", myPlayerId);
-    multiplayerReady = true;
-  }).catch(err => console.error("Error registering player:", err));
-
-  onValue(playersRef, (snapshot) => {
-    const players = snapshot.val() || {};
-    updatePlayerListUI(players);
-
-    otherPlayers.forEach((playerData, playerId) => {
-      if (!players[playerId]) {
+  webrtcMultiplayer = new WebRTCMultiplayer(
+    myPlayerId,
+    (peerId, data) => {
+      // Handle incoming player update
+      updateOtherPlayer(peerId, data);
+    },
+    (peerId) => {
+      // Handle player leave
+      if (otherPlayers.has(peerId)) {
+        const playerData = otherPlayers.get(peerId);
         if (playerData.mesh) scene.remove(playerData.mesh);
         if (playerData.nameLabel) scene.remove(playerData.nameLabel);
-        otherPlayers.delete(playerId);
+        otherPlayers.delete(peerId);
       }
-    });
+      updatePlayerListUI();
+    }
+  );
 
-    Object.keys(players).forEach(playerId => {
-      if (playerId !== myPlayerId) {
-        const playerData = players[playerId];
-        updateOtherPlayer(playerId, playerData);
-      }
-    });
-  }, err => console.error("Error listening to players:", err));
+  multiplayerReady = true;
+  console.log("WebRTC multiplayer initialized");
 
+  // Send periodic updates
   setInterval(() => {
-    if (model && multiplayerReady && myPlayerRef) {
-      update(myPlayerRef, {
+    if (webrtcMultiplayer && webrtcMultiplayer.connected) {
+      webrtcMultiplayer.sendPlayerUpdate({
         x: playerState.pos.x,
         y: playerState.pos.y,
         z: playerState.pos.z,
         rotation: playerState.rot,
-        moving: playerState.moving,
-        timestamp: Date.now()
-      }).catch(err => console.error("Update error:", err));
+        moving: playerState.moving
+      });
     }
   }, UPDATE_INTERVAL);
 }
@@ -445,19 +421,26 @@ const emoteAnimations = {
 };
 
 function playEmote(emoteName) {
-  if (!multiplayerReady || !myPlayerRef) return;
-  
-  const ref = window.firebaseRef;
-  const update = window.firebaseUpdate;
-  update(myPlayerRef, { lastEmote: emoteName, emoteTime: Date.now() })
-    .catch(err => console.error("Emote error:", err));
+  if (!multiplayerReady) return;
+
+  // Send emote through WebRTC if connected, otherwise just show locally
+  if (webrtcMultiplayer && webrtcMultiplayer.connected) {
+    webrtcMultiplayer.sendPlayerUpdate({
+      type: 'emote',
+      emote: emoteName,
+      timestamp: Date.now()
+    });
+  }
+
+  // Show emote in chat
+  addChatMessage('System', `${myPlayerId.substring(7, 12)} ${emoteAnimations[emoteName].sound}`);
 }
 
 document.querySelectorAll('.emote-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const emote = btn.dataset.emote;
     playEmote(emote);
-    });
+  });
 });
 
 // ---------- Camera ----------
