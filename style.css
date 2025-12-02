@@ -154,17 +154,18 @@ html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:wh
 /* Chat Box */
 #chatBox {
   position: absolute;
-  bottom: 40px;
-  left: 20px;
-  background: rgba(13, 16, 24, 0.95);
-  border: 1px solid rgba(119, 192, 255, 0.3);
+  bottom: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
-  width: 300px;
-  max-height: 350px;
+  width: 320px;
+  max-height: 300px;
   display: flex;
   flex-direction: column;
   z-index: 24;
   font-size: 12px;
+  backdrop-filter: blur(4px);
 }
 #chatBox h3 {
   margin: 0;
@@ -186,6 +187,11 @@ html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:wh
   border-radius: 4px;
   color: #aaa;
   word-wrap: break-word;
+  opacity: 1;
+  transition: opacity 0.5s ease;
+}
+.chat-msg.faded {
+  opacity: 0.4;
 }
 .chat-msg strong {
   color: #77c0ff;
@@ -244,4 +250,67 @@ html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:wh
 .emote-btn:hover {
   background: rgba(119, 192, 255, 0.3);
   transform: scale(1.08);
+}
+
+/* Health & Stamina Bars */
+#statsPanel {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 30;
+}
+
+.stat-bar {
+  width: 200px;
+  height: 24px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 2px solid rgba(119, 192, 255, 0.3);
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+.stat-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+#healthFill {
+  background: linear-gradient(90deg, #ff4444, #ff8888);
+}
+
+#staminaFill {
+  background: linear-gradient(90deg, #44ff44, #88ff88);
+}
+
+.stat-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: bold;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Mobile/Tablet responsive emotes */
+@media (max-width: 768px) {
+  #emotesPanel {
+    bottom: 20px;
+    left: auto;
+    right: 20px;
+    flex-direction: row;
+    gap: 4px;
+  }
+  .emote-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
 }

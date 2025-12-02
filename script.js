@@ -12,6 +12,12 @@ let shiftLockEnabled=false;
 let fpsCounter=0, fpsDisplay=0;
 let isSprinting=false;
 
+// Health & Stamina
+let playerHealth = 100;
+let playerStamina = 100;
+const maxHealth = 100;
+const maxStamina = 100;
+
 // ---------- Settings ----------
 const settings = {
   mouseSensitivity: 1,
@@ -26,6 +32,25 @@ function updateHud(){
     hud.textContent=`FPS: ${fpsDisplay} | Right-click + drag to rotate camera | WASD to move | Gamepad: ${hudState.gamepad?'✓':'✗'} | Ctrl Lock: ${shiftLockEnabled?'On':'Off'} | Sprint: ${isSprinting?'On':'Off'}`;
   } else {
     hud.textContent=`${baseHudMessage} | Ctrl Lock: ${shiftLockEnabled?'On':'Off'}`;
+  }
+}
+
+function updateStatsUI(){
+  const healthFill = document.getElementById('healthFill');
+  const staminaFill = document.getElementById('staminaFill');
+  const healthLabel = document.querySelector('#healthBar .stat-label');
+  const staminaLabel = document.querySelector('#staminaBar .stat-label');
+
+  if (healthFill && healthLabel) {
+    const healthPercent = (playerHealth / maxHealth) * 100;
+    healthFill.style.width = healthPercent + '%';
+    healthLabel.textContent = `Health: ${Math.round(playerHealth)}/${maxHealth}`;
+  }
+
+  if (staminaFill && staminaLabel) {
+    const staminaPercent = (playerStamina / maxStamina) * 100;
+    staminaFill.style.width = staminaPercent + '%';
+    staminaLabel.textContent = `Stamina: ${Math.round(playerStamina)}/${maxStamina}`;
   }
 }
 
@@ -111,7 +136,7 @@ let myPlayerRef = null;
 const db = window.firebaseDB;
 
 // ---------- Player ----------
-let model, mixer, idleAction, walkAction, runAction, idleSpecialAction, emoteWaveAction, emoteLaughAction;
+let model, mixer, idleAction, walkAction, runAction, idleSpecialAction, emoteWaveAction, emoteLaughAction, emotePointAction;
 const loader = new GLTFLoader();
 const playerState = { pos:new THREE.Vector3(0,0,0), rot:0, moving:false };
 let currentAnim = 'idle';
@@ -151,13 +176,34 @@ function loadPlayer(){
               emoteLaughAction=mixer.clipAction(emoteLaughGLB.animations[0]);
               emoteLaughAction.loop=THREE.LoopOnce;
               emoteLaughAction.clampWhenFinished=true;
-              document.getElementById("loading").style.display="none";
-              initMultiplayer(); // Initialize after models load
+
+              loader.load("./model/emote_point.glb", emotePointGLB=>{
+                emotePointAction=mixer.clipAction(emotePointGLB.animations[0]);
+                emotePointAction.loop=THREE.LoopOnce;
+                emotePointAction.clampWhenFinished=true;
+                document.getElementById("loading").style.display="none";
+                initMultiplayer(); // Initialize after models load
+              }, undefined, err=>{
+                console.log("Point emote animation missing, using regular idle.");
+                emotePointAction=null;
+                document.getElementById("loading").style.display="none";
+                initMultiplayer();
+              });
             }, undefined, err=>{
               console.log("Laugh emote animation missing, using regular idle.");
               emoteLaughAction=null;
-              document.getElementById("loading").style.display="none";
-              initMultiplayer();
+              loader.load("./model/emote_point.glb", emotePointGLB=>{
+                emotePointAction=mixer.clipAction(emotePointGLB.animations[0]);
+                emotePointAction.loop=THREE.LoopOnce;
+                emotePointAction.clampWhenFinished=true;
+                document.getElementById("loading").style.display="none";
+                initMultiplayer();
+              }, undefined, err=>{
+                console.log("Point emote animation missing, using regular idle.");
+                emotePointAction=null;
+                document.getElementById("loading").style.display="none";
+                initMultiplayer();
+              });
             });
           }, undefined, err=>{
             console.log("Wave emote animation missing, using regular idle.");
@@ -166,13 +212,33 @@ function loadPlayer(){
               emoteLaughAction=mixer.clipAction(emoteLaughGLB.animations[0]);
               emoteLaughAction.loop=THREE.LoopOnce;
               emoteLaughAction.clampWhenFinished=true;
-              document.getElementById("loading").style.display="none";
-              initMultiplayer();
+              loader.load("./model/emote_point.glb", emotePointGLB=>{
+                emotePointAction=mixer.clipAction(emotePointGLB.animations[0]);
+                emotePointAction.loop=THREE.LoopOnce;
+                emotePointAction.clampWhenFinished=true;
+                document.getElementById("loading").style.display="none";
+                initMultiplayer();
+              }, undefined, err=>{
+                console.log("Point emote animation missing, using regular idle.");
+                emotePointAction=null;
+                document.getElementById("loading").style.display="none";
+                initMultiplayer();
+              });
             }, undefined, err=>{
               console.log("Laugh emote animation missing, using regular idle.");
               emoteLaughAction=null;
-              document.getElementById("loading").style.display="none";
-              initMultiplayer();
+              loader.load("./model/emote_point.glb", emotePointGLB=>{
+                emotePointAction=mixer.clipAction(emotePointGLB.animations[0]);
+                emotePointAction.loop=THREE.LoopOnce;
+                emotePointAction.clampWhenFinished=true;
+                document.getElementById("loading").style.display="none";
+                initMultiplayer();
+              }, undefined, err=>{
+                console.log("Point emote animation missing, using regular idle.");
+                emotePointAction=null;
+                document.getElementById("loading").style.display="none";
+                initMultiplayer();
+              });
             });
           });
         }, undefined, err=>{
@@ -188,13 +254,33 @@ function loadPlayer(){
               emoteLaughAction=mixer.clipAction(emoteLaughGLB.animations[0]);
               emoteLaughAction.loop=THREE.LoopOnce;
               emoteLaughAction.clampWhenFinished=true;
-              document.getElementById("loading").style.display="none";
-              initMultiplayer();
+              loader.load("./model/emote_point.glb", emotePointGLB=>{
+                emotePointAction=mixer.clipAction(emotePointGLB.animations[0]);
+                emotePointAction.loop=THREE.LoopOnce;
+                emotePointAction.clampWhenFinished=true;
+                document.getElementById("loading").style.display="none";
+                initMultiplayer();
+              }, undefined, err=>{
+                console.log("Point emote animation missing.");
+                emotePointAction=null;
+                document.getElementById("loading").style.display="none";
+                initMultiplayer();
+              });
             }, undefined, err=>{
               console.log("Laugh emote animation missing.");
               emoteLaughAction=null;
-              document.getElementById("loading").style.display="none";
-              initMultiplayer();
+              loader.load("./model/emote_point.glb", emotePointGLB=>{
+                emotePointAction=mixer.clipAction(emotePointGLB.animations[0]);
+                emotePointAction.loop=THREE.LoopOnce;
+                emotePointAction.clampWhenFinished=true;
+                document.getElementById("loading").style.display="none";
+                initMultiplayer();
+              }, undefined, err=>{
+                console.log("Point emote animation missing.");
+                emotePointAction=null;
+                document.getElementById("loading").style.display="none";
+                initMultiplayer();
+              });
             });
           }, undefined, err=>{
             console.log("Wave emote animation missing.");
@@ -325,6 +411,7 @@ function updateOtherPlayer(playerId, data) {
       idleSpecialAction: null,
       emoteWaveAction: null,
       emoteLaughAction: null,
+      emotePointAction: null,
       currentAnim: 'idle',
       animation: data.animation || 'idle',
       nameLabel: null,
@@ -404,8 +491,25 @@ function createOtherPlayerModel(playerId, playerData, data) {
               emoteLaughAction.loop = THREE.LoopOnce;
               emoteLaughAction.clampWhenFinished = true;
               playerData.emoteLaughAction = emoteLaughAction;
+
+              playerLoader.load("./model/emote_point.glb", emotePointGLB => {
+                const emotePointAction = playerMixer.clipAction(emotePointGLB.animations[0]);
+                emotePointAction.loop = THREE.LoopOnce;
+                emotePointAction.clampWhenFinished = true;
+                playerData.emotePointAction = emotePointAction;
+              }, undefined, err => {
+                playerData.emotePointAction = null;
+              });
             }, undefined, err => {
               playerData.emoteLaughAction = null;
+              playerLoader.load("./model/emote_point.glb", emotePointGLB => {
+                const emotePointAction = playerMixer.clipAction(emotePointGLB.animations[0]);
+                emotePointAction.loop = THREE.LoopOnce;
+                emotePointAction.clampWhenFinished = true;
+                playerData.emotePointAction = emotePointAction;
+              }, undefined, err => {
+                playerData.emotePointAction = null;
+              });
             });
           }, undefined, err => {
             playerData.emoteWaveAction = null;
@@ -451,6 +555,7 @@ function createOtherPlayerModel(playerId, playerData, data) {
         playerData.idleSpecialAction = null;
         playerData.emoteWaveAction = null;
         playerData.emoteLaughAction = null;
+        playerData.emotePointAction = null;
       });
     }, undefined, err => {
       playerData.walkAction = idleAction;
@@ -521,16 +626,33 @@ const chatMessages = [];
 
 function addChatMessage(username, message) {
   const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  chatMessages.unshift({ username, message, timestamp });
-  if (chatMessages.length > MAX_CHAT_MESSAGES) chatMessages.pop();
+  const msgId = Date.now() + Math.random();
+  chatMessages.push({ username, message, timestamp, id: msgId });
+  if (chatMessages.length > MAX_CHAT_MESSAGES) chatMessages.shift();
   updateChatUI();
+
+  // Fade out after 10 seconds
+  setTimeout(() => {
+    const msgElement = document.querySelector(`[data-msg-id="${msgId}"]`);
+    if (msgElement) msgElement.classList.add('faded');
+  }, 10000);
+}
+
+function getUsernameColor(username) {
+  const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'];
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) {
+    hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
 }
 
 function updateChatUI() {
   const chatDiv = document.getElementById('chatMessages');
-  chatDiv.innerHTML = chatMessages.map(msg =>
-    `<div class="chat-msg"><strong>${msg.username}:</strong> ${msg.message}</div>`
-  ).join('');
+  chatDiv.innerHTML = chatMessages.map(msg => {
+    const color = getUsernameColor(msg.username);
+    return `<div class="chat-msg" data-msg-id="${msg.id}"><strong style="color: ${color};">${msg.username}:</strong> ${msg.message}</div>`;
+  }).join('');
   chatDiv.scrollTop = chatDiv.scrollHeight;
 }
 
@@ -598,6 +720,8 @@ function playEmote(emoteName) {
     setAnim('emote_wave');
   } else if (emoteName === 'laugh' && emoteLaughAction) {
     setAnim('emote_laugh');
+  } else if (emoteName === 'point' && emotePointAction) {
+    setAnim('emote_point');
   }
 }
 
@@ -784,7 +908,7 @@ function normalizeAngle(a){ return Math.atan2(Math.sin(a),Math.cos(a)); }
 
 function setAnim(target){
   if(!idleAction||!walkAction||currentAnim===target) return;
-  const outgoing = currentAnim==='idle'?idleAction:currentAnim==='idleSpecial'?idleSpecialAction:currentAnim==='walk'?walkAction:currentAnim==='run'?runAction:currentAnim==='emote_wave'?emoteWaveAction:currentAnim==='emote_laugh'?emoteLaughAction:idleAction;
+  const outgoing = currentAnim==='idle'?idleAction:currentAnim==='idleSpecial'?idleSpecialAction:currentAnim==='walk'?walkAction:currentAnim==='run'?runAction:currentAnim==='emote_wave'?emoteWaveAction:currentAnim==='emote_laugh'?emoteLaughAction:currentAnim==='emote_point'?emotePointAction:idleAction;
 
   if(target==="run" && runAction){
     outgoing.fadeOut(0.2);
@@ -819,11 +943,16 @@ function setAnim(target){
     emoteLaughAction.reset().fadeIn(1).play();
     currentAnim="emote_laugh";
   }
+  else if(target==="emote_point" && emotePointAction){
+    outgoing.fadeOut(0.1);
+    emotePointAction.reset().fadeIn(1).play();
+    currentAnim="emote_point";
+  }
 }
 
 function setOtherAnim(playerData, target){
   if(!playerData.idleAction||!playerData.walkAction||playerData.currentAnim===target) return;
-  const outgoing = playerData.currentAnim==='idle'?playerData.idleAction:playerData.currentAnim==='idleSpecial'?playerData.idleSpecialAction:playerData.currentAnim==='walk'?playerData.walkAction:playerData.currentAnim==='run'?playerData.runAction:playerData.currentAnim==='emote_wave'?playerData.emoteWaveAction:playerData.currentAnim==='emote_laugh'?playerData.emoteLaughAction:playerData.idleAction;
+  const outgoing = playerData.currentAnim==='idle'?playerData.idleAction:playerData.currentAnim==='idleSpecial'?playerData.idleSpecialAction:playerData.currentAnim==='walk'?playerData.walkAction:playerData.currentAnim==='run'?playerData.runAction:playerData.currentAnim==='emote_wave'?playerData.emoteWaveAction:playerData.currentAnim==='emote_laugh'?playerData.emoteLaughAction:playerData.currentAnim==='emote_point'?playerData.emotePointAction:playerData.idleAction;
 
   if(target==="run" && playerData.runAction){
     outgoing.fadeOut(0.2);
@@ -855,6 +984,11 @@ function setOtherAnim(playerData, target){
     playerData.emoteLaughAction.reset().fadeIn(1).play();
     playerData.currentAnim="emote_laugh";
   }
+  else if(target==="emote_point" && playerData.emotePointAction){
+    outgoing.fadeOut(0.1);
+    playerData.emotePointAction.reset().fadeIn(1).play();
+    playerData.currentAnim="emote_point";
+  }
 }
 
 // ---------- Main Loop ----------
@@ -870,6 +1004,9 @@ function animate(){
     setAnim("idle");
   }
   if(currentAnim==='emote_laugh' && emoteLaughAction && !emoteLaughAction.isRunning()){
+    setAnim("idle");
+  }
+  if(currentAnim==='emote_point' && emotePointAction && !emotePointAction.isRunning()){
     setAnim("idle");
   }
 
@@ -998,6 +1135,9 @@ function animate(){
       if (playerData.currentAnim === 'emote_laugh' && playerData.emoteLaughAction && !playerData.emoteLaughAction.isRunning()) {
         setOtherAnim(playerData, 'idle');
       }
+      if (playerData.currentAnim === 'emote_point' && playerData.emotePointAction && !playerData.emotePointAction.isRunning()) {
+        setOtherAnim(playerData, 'idle');
+      }
     }
 
     // Smooth position interpolation
@@ -1017,6 +1157,7 @@ function animate(){
   renderer.render(scene,camera);
   hudState.gamepad=!!gamepad.active;
   updateHud();
+  updateStatsUI();
 }
 animate();
 
