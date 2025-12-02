@@ -1,7 +1,7 @@
 html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:white; -webkit-user-select:none; user-select:none; touch-action:none;}
 #scene {width:100%; height:100%; display:block; touch-action:none;}
 #loading {position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#77c0ff; font-size:20px;}
-#hud {position:absolute; top:20px; left:20px; color:#77c0ff; font-size:14px; background:rgba(0,0,0,0.4); padding:6px 10px; border-radius:6px; z-index:30;}
+#hud {position:absolute; top:20px; left:350px; color:#77c0ff; font-size:14px; background:rgba(0,0,0,0.4); padding:6px 10px; border-radius:6px; z-index:30;}
 #shiftLockIndicator {position:absolute; top:20px; right:120px; z-index:31; background:rgba(13,16,24,0.85); border:1px solid rgba(119,192,255,0.3); color:#9fd0ff; padding:7px 14px; border-radius:999px; font-size:12px; letter-spacing:0.3px; box-shadow:0 6px 20px rgba(0,0,0,0.4); transition:background 0.3s ease, border-color 0.3s ease, color 0.3s ease, transform 0.2s ease;}
 #shiftLockIndicator.active {background:rgba(119,192,255,0.2); border-color:rgba(119,192,255,0.8); color:#fff; transform:translateY(-1px);}
 
@@ -109,8 +109,8 @@ html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:wh
 /* Player List */
 #playerList {
   position: absolute;
-  top: 80px;
-  left: 20px;
+  top: 60px;
+  right: 20px;
   background: rgba(13, 16, 24, 0.9);
   border: 1px solid rgba(119, 192, 255, 0.3);
   border-radius: 8px;
@@ -154,8 +154,8 @@ html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:wh
 /* Chat Box */
 #chatBox {
   position: absolute;
-  bottom: 20px;
-  right: 20px;
+  top: 20px;
+  left: 20px;
   background: rgba(0, 0, 0, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;

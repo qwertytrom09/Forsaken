@@ -126,6 +126,45 @@ const wallMat = new THREE.MeshStandardMaterial({color:0x454a52});
 const wall1 = new THREE.Mesh(wallGeom, wallMat); wall1.position.set(30, 2, -30); scene.add(wall1);
 const wall2 = new THREE.Mesh(wallGeom, wallMat); wall2.position.set(-30, 2, 30); wall2.rotation.y=Math.PI/2; scene.add(wall2);
 
+// ---------- Particle Systems ----------
+// Dust particles
+const dustCount = 50;
+const dustGeometry = new THREE.BufferGeometry();
+const dustPositions = new Float32Array(dustCount * 3);
+const dustVelocities = [];
+const dustLifetimes = [];
+for (let i = 0; i < dustCount; i++) {
+  dustPositions[i * 3] = 0;
+  dustPositions[i * 3 + 1] = 0;
+  dustPositions[i * 3 + 2] = 0;
+  dustVelocities.push(new THREE.Vector3((Math.random() - 0.5) * 2, Math.random() * 1 + 0.5, (Math.random() - 0.5) * 2));
+  dustLifetimes.push(0);
+}
+dustGeometry.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+const dustMaterial = new THREE.PointsMaterial({ color: 0xcccccc, size: 0.05, transparent: true, opacity: 0.8 });
+const dustParticles = new THREE.Points(dustGeometry, dustMaterial);
+scene.add(dustParticles);
+
+// Sparkle particles
+const sparkleCount = 20;
+const sparkleGeometry = new THREE.BufferGeometry();
+const sparklePositions = new Float32Array(sparkleCount * 3);
+const sparkleVelocities = [];
+const sparkleLifetimes = [];
+for (let i = 0; i < sparkleCount; i++) {
+  sparklePositions[i * 3] = 0;
+  sparklePositions[i * 3 + 1] = 0;
+  sparklePositions[i * 3 + 2] = 0;
+  sparkleVelocities.push(new THREE.Vector3((Math.random() - 0.5) * 1, Math.random() * 0.5 + 0.5, (Math.random() - 0.5) * 1));
+  sparkleLifetimes.push(0);
+}
+sparkleGeometry.setAttribute('position', new THREE.BufferAttribute(sparklePositions, 3));
+const sparkleMaterial = new THREE.PointsMaterial({ color: 0xffff00, size: 0.1, transparent: true, opacity: 0.9 });
+const sparkleParticles = new THREE.Points(sparkleGeometry, sparkleMaterial);
+scene.add(sparkleParticles);
+
+
+
 // ---------- Firebase Multiplayer Setup ----------
 const myPlayerId = 'player_' + Math.random().toString(36).substr(2, 9);
 const otherPlayers = new Map();
@@ -714,6 +753,17 @@ const emoteAnimations = {
 function playEmote(emoteName) {
   if (!multiplayerReady) return;
 
+  // Emit sparkles
+  const headPos = new THREE.Vector3(playerState.pos.x, playerState.pos.y + 1.5, playerState.pos.z);
+  for (let i = 0; i < sparkleCount; i++) {
+    if (sparkleLifetimes[i] <= 0) {
+      sparklePositions[i * 3] = headPos.x + (Math.random() - 0.5) * 0.5;
+      sparklePositions[i * 3 + 1] = headPos.y + (Math.random() - 0.5) * 0.5;
+      sparklePositions[i * 3 + 2] = headPos.z + (Math.random() - 0.5) * 0.5;
+      sparkleVelocities[i].set((Math.random() - 0.5) * 1, Math.random() * 0.5 + 0.5, (Math.random() - 0.5) * 1);
+      sparkleLifetimes[i] = 1.5;
+    }
+  }
 
   // Play 3D animation if available
   if (emoteName === 'wave' && emoteWaveAction) {
@@ -1154,7 +1204,53 @@ function animate(){
     }
   });
 
-  renderer.render(scene,camera);
+  // Emit dust if sprinting
+  if (isSprinting && moving) {
+    for (let i = 0; i < dustCount; i++) {
+      if (dustLifetimes[i] <= 0) {
+        dustPositions[i * 3] = playerState.pos.x + (Math.random() - 0.5) * 0.2;
+        dustPositions[i * 3 + 1] = playerState.pos.y;
+        dustPositions[i * 3 + 2] = playerState.pos.z + (Math.random() - 0.5) * 0.2;
+        dustVelocities[i].set((Math.random() - 0.5) * 2, Math.random() * 1 + 0.5, (Math.random() - 0.5) * 2);
+        dustLifetimes[i] = 2;
+        break;
+      }
+    }
+  }
+
+  // Update dust particles
+  for (let i = 0; i < dustCount; i++) {
+    if (dustLifetimes[i] > 0) {
+      dustPositions[i * 3] += dustVelocities[i].x * dt;
+      dustPositions[i * 3 + 1] += dustVelocities[i].y * dt;
+      dustPositions[i * 3 + 2] += dustVelocities[i].z * dt;
+      dustVelocities[i].y -= 9.8 * dt;
+      dustLifetimes[i] -= dt;
+    } else {
+      dustPositions[i * 3] = 0;
+      dustPositions[i * 3 + 1] = 0;
+      dustPositions[i * 3 + 2] = 0;
+    }
+  }
+  dustGeometry.attributes.position.needsUpdate = true;
+
+  // Update sparkle particles
+  for (let i = 0; i < sparkleCount; i++) {
+    if (sparkleLifetimes[i] > 0) {
+      sparklePositions[i * 3] += sparkleVelocities[i].x * dt;
+      sparklePositions[i * 3 + 1] += sparkleVelocities[i].y * dt;
+      sparklePositions[i * 3 + 2] += sparkleVelocities[i].z * dt;
+      sparkleVelocities[i].y -= 9.8 * dt;
+      sparkleLifetimes[i] -= dt;
+    } else {
+      sparklePositions[i * 3] = 0;
+      sparklePositions[i * 3 + 1] = 0;
+      sparklePositions[i * 3 + 2] = 0;
+    }
+  }
+  sparkleGeometry.attributes.position.needsUpdate = true;
+
+  renderer.render(scene, camera);
   hudState.gamepad=!!gamepad.active;
   updateHud();
   updateStatsUI();
