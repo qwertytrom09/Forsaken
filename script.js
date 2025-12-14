@@ -20,11 +20,14 @@ let staminaRecoveryTimer = 0; // Timer for recovery delay when stamina reaches 0
 let sprintBlockTimer = 0; // Timer that blocks sprinting after stamina depletion
 
 // ---------- Settings ----------
+// Detect mobile device
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
+
 const settings = {
   mouseSensitivity: 1,
   gamepadDeadzone: 0.1,
   gamepadSensitivity: 1,
-  graphicsQuality: 'medium'
+  graphicsQuality: isMobile ? 'low' : 'medium'
 };
 
 // ---------- ACCESSORY SYSTEM ----------
@@ -48,11 +51,15 @@ const accessoryConfig = {
   }
 };
 
+
+
 // Custom accessory positions (saved by user)
 let customAccessoryPositions = {};
 
 // Store loaded accessory models
 const loadedAccessoryModels = new Map();
+
+
 
 // ---------- ACCESSORY FUNCTIONS ----------
 // Load accessory model
@@ -189,13 +196,14 @@ const boneCache = new Map();
 // Show/hide accessory editor based on selection
 function updateAccessoryEditor() {
   const editor = document.getElementById('accessoryEditor');
-  const hasAccessory = Object.values(customization.accessories).some(acc => acc !== 'none');
+  // Don't show physics accessories like cape in position editor
+  const hasAccessory = Object.values(customization.accessories).some(acc => acc !== 'none' && acc !== 'cape');
 
   if (hasAccessory) {
     editor.style.display = 'block';
-    // Auto-select first available accessory for editing
+    // Auto-select first available accessory for editing (excluding physics ones)
     const availableAccessories = Object.entries(customization.accessories)
-      .filter(([key, value]) => value !== 'none');
+      .filter(([key, value]) => value !== 'none' && value !== 'cape');
     if (availableAccessories.length > 0) {
       currentEditingAccessory = availableAccessories[0][1]; // accessory key
       loadAccessoryPosition(currentEditingAccessory);
@@ -589,9 +597,14 @@ if (!('ontouchstart' in window)) {
 }
 
 // ---------- Three.js ----------
+// Performance optimization: Reduce pixel ratio and disable antialiasing on mobile
 const canvas = document.getElementById("scene");
-const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: !isMobile, // Disable antialiasing on mobile for better performance
+  powerPreference: "high-performance"
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 
 const scene = new THREE.Scene();
@@ -634,10 +647,40 @@ const wall2 = new THREE.Mesh(wallGeom, wallMat); wall2.position.set(-30, 2, 30);
 
 
 // ---------- Particle Systems ----------
-// Dust particles removed
+// Performance optimization: Reduce particle counts on mobile
+const dustCount = isMobile ? 50 : 200;
+const sparkleCount = isMobile ? 10 : 20;
+const sweatCount = isMobile ? 15 : 30;
+
+// Dust particles
+const dustGeometry = new THREE.BufferGeometry();
+const dustPositions = new Float32Array(dustCount * 3);
+const dustVelocities = [];
+const dustOscillation = [];
+const dustLifetimes = [];
+for (let i = 0; i < dustCount; i++) {
+  dustPositions[i * 3] = (Math.random() - 0.5) * 80; // Smaller area
+  dustPositions[i * 3 + 1] = Math.random() * 4 + 1; // Lower height range
+  dustPositions[i * 3 + 2] = (Math.random() - 0.5) * 80;
+  dustVelocities.push(new THREE.Vector3((Math.random() - 0.5) * 0.02, (Math.random() - 0.5) * 0.01, (Math.random() - 0.5) * 0.02)); // Much slower
+  dustOscillation.push({ phase: Math.random() * Math.PI * 2, amplitude: Math.random() * 0.5 + 0.2 });
+  dustLifetimes.push(Math.random() * 10 + 5); // Random lifetimes
+}
+dustGeometry.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+const dustMaterial = new THREE.PointsMaterial({ color: 0xf5f5f5, size: 0.08, transparent: true, opacity: 0.4, vertexColors: true });
+const dustColors = new Float32Array(dustCount * 3);
+for (let i = 0; i < dustCount; i++) {
+  // Slightly varying colors for more realism
+  const brightness = 0.9 + Math.random() * 0.1;
+  dustColors[i * 3] = brightness; // R
+  dustColors[i * 3 + 1] = brightness; // G
+  dustColors[i * 3 + 2] = brightness; // B
+}
+dustGeometry.setAttribute('color', new THREE.BufferAttribute(dustColors, 3));
+const dustParticles = new THREE.Points(dustGeometry, dustMaterial);
+scene.add(dustParticles);
 
 // Sparkle particles
-const sparkleCount = 20;
 const sparkleGeometry = new THREE.BufferGeometry();
 const sparklePositions = new Float32Array(sparkleCount * 3);
 const sparkleVelocities = [];
@@ -650,12 +693,11 @@ for (let i = 0; i < sparkleCount; i++) {
   sparkleLifetimes.push(0);
 }
 sparkleGeometry.setAttribute('position', new THREE.BufferAttribute(sparklePositions, 3));
-const sparkleMaterial = new THREE.PointsMaterial({ color: 0xffff00, size: 0.1, transparent: true, opacity: 0.9 });
+const sparkleMaterial = new THREE.PointsMaterial({ color: 0xffff00, size: 0.5, transparent: true, opacity: 0.9 });
 const sparkleParticles = new THREE.Points(sparkleGeometry, sparkleMaterial);
 scene.add(sparkleParticles);
 
 // Sweat particles (for low stamina)
-const sweatCount = 15;
 const sweatGeometry = new THREE.BufferGeometry();
 const sweatPositions = new Float32Array(sweatCount * 3);
 const sweatVelocities = [];
@@ -668,7 +710,7 @@ for (let i = 0; i < sweatCount; i++) {
   sweatLifetimes.push(0);
 }
 sweatGeometry.setAttribute('position', new THREE.BufferAttribute(sweatPositions, 3));
-const sweatMaterial = new THREE.PointsMaterial({ color: 0x88ddff, size: 0.03, transparent: true, opacity: 0.7 });
+const sweatMaterial = new THREE.PointsMaterial({ color: 0x88ddff, size: 0.3, transparent: true, opacity: 0.7 });
 const sweatParticles = new THREE.Points(sweatGeometry, sweatMaterial);
 scene.add(sweatParticles);
 
@@ -992,13 +1034,14 @@ function updateOtherPlayer(playerId, data) {
       // Update customization if changed
       if (data.bodyColor) playerData.customization.bodyColor = data.bodyColor;
       if (data.scale) playerData.customization.scale = data.scale;
-      if (data.accessories) {
-        playerData.customization.accessories = data.accessories;
-        // Reapply accessories if they changed
-        if (playerData.model) {
-          applyAccessoriesToPlayer(playerData.model, data.accessories);
-        }
-      }
+      // Skip accessories for other players to improve performance
+      // if (data.accessories) {
+      //   playerData.customization.accessories = data.accessories;
+      //   // Reapply accessories if they changed
+      //   if (playerData.model) {
+      //     applyAccessoriesToPlayer(playerData.model, data.accessories);
+      //   }
+      // }
     }
   }
 }
@@ -1021,8 +1064,8 @@ function createOtherPlayerModel(playerId, playerData, data) {
       }
     });
 
-    // Apply accessories
-    applyAccessoriesToPlayer(playerModel, data.accessories || { hat: 'none', face: 'none', back: 'none' });
+    // Skip accessories for other players to improve performance
+    // applyAccessoriesToPlayer(playerModel, data.accessories || { hat: 'none', face: 'none', back: 'none' });
 
     scene.add(playerModel);
     playerData.model = playerModel;
@@ -1861,37 +1904,86 @@ function animate(){
       playerData.nameLabel.position.copy(playerData.mesh.position);
       playerData.nameLabel.position.y += 2.5;
     }
-
-    // Distance-based accessory culling for performance
-    const distanceToPlayer = camera.position.distanceTo(playerData.targetPos);
-    const accessoryCullDistance = 50; // Hide accessories beyond this distance
-
-    if (playerData.model) {
-      playerData.model.traverse((child) => {
-        if (child.userData && child.userData.isAccessory) {
-          child.visible = distanceToPlayer <= accessoryCullDistance;
-        }
-      });
-    }
   });
 
 
 
-  // Emit sweat particles when stamina is low
-  if (playerStamina < 25 && Math.random() < 0.05) { // 5% chance per frame when stamina < 25
+  // Emit sweat particles when stamina is low (performance optimization: less frequent on mobile)
+  const sweatEmitChance = isMobile ? 0.03 : 0.1; // 3% chance on mobile, 10% on desktop
+  if (playerStamina < 50 && Math.random() < sweatEmitChance) {
     for (let i = 0; i < sweatCount; i++) {
       if (sweatLifetimes[i] <= 0) {
-        sweatPositions[i * 3] = playerState.pos.x + (Math.random() - 0.5) * 0.1;
-        sweatPositions[i * 3 + 1] = playerState.pos.y + 1.2 + (Math.random() - 0.5) * 0.2; // Around head area
-        sweatPositions[i * 3 + 2] = playerState.pos.z + (Math.random() - 0.5) * 0.1;
-        sweatVelocities[i].set((Math.random() - 0.5) * 0.5, Math.random() * 0.2 - 0.5, (Math.random() - 0.5) * 0.5);
-        sweatLifetimes[i] = 2.0;
+        sweatPositions[i * 3] = playerState.pos.x + (Math.random() - 0.5) * 2.0; // Wider spread
+        sweatPositions[i * 3 + 1] = playerState.pos.y + 2.0; // Higher up
+        sweatPositions[i * 3 + 2] = playerState.pos.z + (Math.random() - 0.5) * 2.0; // Wider spread
+        sweatVelocities[i].set((Math.random() - 0.5) * 1.0, 0, (Math.random() - 0.5) * 1.0); // No initial Y velocity
+        sweatLifetimes[i] = 2.0; // Shorter lifetime to free up slots faster
+        if (!isMobile) console.log('Sweat particle emitted at:', sweatPositions[i * 3], sweatPositions[i * 3 + 1], sweatPositions[i * 3 + 2]); // Only log on desktop
         break;
       }
     }
   }
 
 
+
+
+
+  // Update dust particles
+  for (let i = 0; i < dustCount; i++) {
+    // Update lifetime
+    dustLifetimes[i] -= dt;
+
+    // Respawn particle if lifetime expired or out of bounds
+    if (dustLifetimes[i] <= 0 || dustPositions[i * 3 + 1] > 8 || dustPositions[i * 3 + 1] < 0) {
+      dustPositions[i * 3] = (Math.random() - 0.5) * 80;
+      dustPositions[i * 3 + 1] = Math.random() * 4 + 1;
+      dustPositions[i * 3 + 2] = (Math.random() - 0.5) * 80;
+      dustVelocities[i].set((Math.random() - 0.5) * 0.02, (Math.random() - 0.5) * 0.01, (Math.random() - 0.5) * 0.02);
+      dustOscillation[i].phase = Math.random() * Math.PI * 2;
+      dustLifetimes[i] = Math.random() * 10 + 5;
+    } else {
+      // Check distance to player and react if close
+      const dx = dustPositions[i * 3] - playerState.pos.x;
+      const dy = dustPositions[i * 3 + 1] - playerState.pos.y;
+      const dz = dustPositions[i * 3 + 2] - playerState.pos.z;
+      const distanceToPlayer = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      // If player is close (within 8 units) and moving, disturb the dust
+      if (distanceToPlayer < 8 && playerState.moving) {
+        const disturbanceStrength = (8 - distanceToPlayer) / 8; // Stronger when closer
+        const pushDirection = new THREE.Vector3(dx, 0, dz).normalize();
+
+        // Push dust away from player (stronger push)
+        dustVelocities[i].x += pushDirection.x * disturbanceStrength * 0.3;
+        dustVelocities[i].z += pushDirection.z * disturbanceStrength * 0.3;
+        dustVelocities[i].y += 0.02; // Very slight upward boost
+
+        // Add some randomness to make it more natural
+        dustVelocities[i].x += (Math.random() - 0.5) * 0.05;
+        dustVelocities[i].z += (Math.random() - 0.5) * 0.05;
+
+        // Increase oscillation for disturbed particles
+        dustOscillation[i].phase += dt * 2.0;
+      } else {
+        // Apply friction to slow down disturbed particles
+        dustVelocities[i].x *= 0.98;
+        dustVelocities[i].y *= 0.98;
+        dustVelocities[i].z *= 0.98;
+
+        // Normal oscillation for undisturbed particles
+        dustOscillation[i].phase += dt * 0.5;
+      }
+
+      // Apply movement
+      dustPositions[i * 3] += dustVelocities[i].x * dt;
+      dustPositions[i * 3 + 1] += dustVelocities[i].y * dt;
+      dustPositions[i * 3 + 2] += dustVelocities[i].z * dt;
+
+      // Add subtle floating oscillation
+      dustPositions[i * 3 + 1] += Math.sin(dustOscillation[i].phase) * dustOscillation[i].amplitude * dt * 0.1;
+    }
+  }
+  dustGeometry.attributes.position.needsUpdate = true;
 
   // Update sparkle particles
   for (let i = 0; i < sparkleCount; i++) {

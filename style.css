@@ -748,4 +748,56 @@ html, body {margin:0; height:100%; overflow:hidden; background:#0e0f12; color:wh
     height: 40px;
     font-size: 18px;
   }
+
+  /* Performance optimizations for mobile */
+  * {
+    /* Disable complex animations on mobile */
+    animation-duration: 0.1s !important;
+    transition-duration: 0.1s !important;
+  }
+
+  /* Reduce UI complexity on mobile */
+  #hud {
+    font-size: 10px;
+    padding: 4px 8px;
+  }
+
+  #statsPanel {
+    bottom: 15px;
+    left: 15px;
+  }
+
+  .stat-bar {
+    width: 150px;
+    height: 18px;
+  }
+
+  .stat-label {
+    font-size: 8px;
+  }
+
+  #chatBox {
+    width: 280px;
+    max-height: 250px;
+  }
+
+  #playerList {
+    width: 180px;
+    max-height: 250px;
+  }
+
+  /* Simplify loading animation */
+  #loading {
+    font-size: 16px;
+    animation-duration: 1s;
+  }
+
+  /* Reduce button animations */
+  #customizeBtn, #settingsBtn, #chatToggleBtn {
+    animation: none;
+  }
+
+  #customizeBtn:hover, #settingsBtn:hover, #chatToggleBtn:hover {
+    transform: none;
+  }
 }
