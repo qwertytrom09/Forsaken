@@ -5,11 +5,14 @@ import { GLTFLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders
 
 const hud=document.getElementById('hud');
 const settingsOverlay=document.getElementById('settingsOverlay');
-const baseHudMessage='Right-click + drag to rotate camera | Mouse wheel to zoom | WASD to move | Hold Shift to sprint';
+const baseHudMessage='Right-click + drag to rotate camera | Mouse wheel to zoom | WASD to move | Hold Shift to sprint | ESC for menu | M for menu | C for customize | O for settings | T for chat | F1 for help';
 const hudState={gamepad:false};
 let fpsCounter=0, fpsDisplay=0;
 let isSprinting=false;
 let chatVisible=true;
+
+// ---------- UI State ----------
+let gamePaused = false;
 
 // Health & Stamina
 let playerHealth = 100;
@@ -37,9 +40,9 @@ const accessoryConfig = {
     none: null,
     hat_basic: {
       file: 'HAT_GLB.glb',
-      defaultPosition: [0, 1.8, 0],
+      defaultPosition: [0, 1, 0],
       defaultRotation: [0, 0, 0],
-      defaultScale: [0.3, 0.3, 0.3],
+      defaultScale: [0.2, 0.2, 0.2],
       defaultAttachment: 'head'
     }
   },
@@ -125,6 +128,7 @@ function applyAccessoriesToPlayer(playerModel, accessories) {
   categories.forEach(category => {
     const accessoryKey = accessories[category];
     if (accessoryKey && accessoryKey !== 'none') {
+      // Regular accessories
       loadAccessoryModel(accessoryKey, (accessoryModel) => {
         if (accessoryModel) {
           const accessoryClone = accessoryModel.clone();
@@ -196,14 +200,13 @@ const boneCache = new Map();
 // Show/hide accessory editor based on selection
 function updateAccessoryEditor() {
   const editor = document.getElementById('accessoryEditor');
-  // Don't show physics accessories like cape in position editor
-  const hasAccessory = Object.values(customization.accessories).some(acc => acc !== 'none' && acc !== 'cape');
+  const hasAccessory = Object.values(customization.accessories).some(acc => acc !== 'none');
 
   if (hasAccessory) {
     editor.style.display = 'block';
-    // Auto-select first available accessory for editing (excluding physics ones)
+    // Auto-select first available accessory for editing
     const availableAccessories = Object.entries(customization.accessories)
-      .filter(([key, value]) => value !== 'none' && value !== 'cape');
+      .filter(([key, value]) => value !== 'none');
     if (availableAccessories.length > 0) {
       currentEditingAccessory = availableAccessories[0][1]; // accessory key
       loadAccessoryPosition(currentEditingAccessory);
@@ -459,15 +462,11 @@ function updateSettingsUI(){
   document.getElementById('graphicsQuality').value = settings.graphicsQuality;
 }
 
-document.getElementById('mouseSensitivity').addEventListener('change', e=>{ settings.mouseSensitivity=parseFloat(e.target.value); });
+document.getElementById('mouseSensitivity').addEventListener('change', e=>{ settings.mouseSensitivity=parseFloat(e.target.value); cameraController.setSensitivity(settings.mouseSensitivity); });
 document.getElementById('gamepadDeadzone').addEventListener('change', e=>{ settings.gamepadDeadzone=parseFloat(e.target.value); });
 document.getElementById('gamepadSensitivity').addEventListener('change', e=>{ settings.gamepadSensitivity=parseFloat(e.target.value); });
 document.getElementById('graphicsQuality').addEventListener('change', e=>{ settings.graphicsQuality=e.target.value; });
 
-document.getElementById('customizeBtn').addEventListener('click', ()=>{
-  document.getElementById('customizeOverlay').classList.add('visible');
-  updateAccessoryEditor();
-});
 document.getElementById('customizeClose').addEventListener('click', ()=>document.getElementById('customizeOverlay').classList.remove('visible'));
 document.getElementById('customizeApply').addEventListener('click', applyCustomization);
 
@@ -522,7 +521,6 @@ document.getElementById('customizeOverlay').addEventListener('click', e=>{
   if(e.target===document.getElementById('customizeOverlay')) document.getElementById('customizeOverlay').classList.remove('visible');
 });
 
-document.getElementById('settingsBtn').addEventListener('click', ()=>settingsOverlay.classList.add('visible'));
 document.getElementById('settingsClose').addEventListener('click', ()=>settingsOverlay.classList.remove('visible'));
 
 // Chat toggle functionality
@@ -530,6 +528,176 @@ document.getElementById('chatToggleBtn').addEventListener('click', toggleChat);
 
 settingsOverlay.addEventListener('click', e=>{
   if(e.target===settingsOverlay) settingsOverlay.classList.remove('visible');
+});
+
+// ---------- Main Menu System ----------
+document.getElementById('mainMenuBtn').addEventListener('click', () => {
+  document.getElementById('mainMenuOverlay').classList.add('visible');
+  gamePaused = true;
+  showNotification('Game Paused', 'info');
+});
+
+document.getElementById('resumeGame').addEventListener('click', () => {
+  document.getElementById('mainMenuOverlay').classList.remove('visible');
+  gamePaused = false;
+  showNotification('Game Resumed', 'success');
+});
+
+document.getElementById('openSettings').addEventListener('click', () => {
+  document.getElementById('mainMenuOverlay').classList.remove('visible');
+  document.getElementById('settingsOverlay').classList.add('visible');
+});
+
+document.getElementById('openCustomize').addEventListener('click', () => {
+  document.getElementById('mainMenuOverlay').classList.remove('visible');
+  document.getElementById('customizeOverlay').classList.add('visible');
+  updateAccessoryEditor();
+});
+
+document.getElementById('openHelp').addEventListener('click', () => {
+  document.getElementById('mainMenuOverlay').classList.remove('visible');
+  document.getElementById('helpOverlay').classList.add('visible');
+});
+
+document.getElementById('openCredits').addEventListener('click', () => {
+  document.getElementById('mainMenuOverlay').classList.remove('visible');
+  document.getElementById('creditsOverlay').classList.add('visible');
+});
+
+document.getElementById('quitGame').addEventListener('click', () => {
+  if (confirm('Are you sure you want to quit to main menu? All unsaved progress will be lost.')) {
+    // Reset game state
+    playerHealth = maxHealth;
+    playerStamina = maxStamina;
+    playerState.pos.set(0, 0, 0);
+    playerState.rot = 0;
+    if (model) {
+      model.position.copy(playerState.pos);
+      model.rotation.y = playerState.rot;
+    }
+    document.getElementById('mainMenuOverlay').classList.remove('visible');
+    gamePaused = false;
+    showNotification('Game Reset', 'info');
+  }
+});
+
+// Main menu overlay click to close
+document.getElementById('mainMenuOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('mainMenuOverlay')) {
+    document.getElementById('mainMenuOverlay').classList.remove('visible');
+    gamePaused = false;
+    showNotification('Game Resumed', 'success');
+  }
+});
+
+// ---------- Help Menu ----------
+document.getElementById('helpClose').addEventListener('click', () => {
+  document.getElementById('helpOverlay').classList.remove('visible');
+  document.getElementById('mainMenuOverlay').classList.add('visible');
+});
+
+document.getElementById('helpOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('helpOverlay')) {
+    document.getElementById('helpOverlay').classList.remove('visible');
+    document.getElementById('mainMenuOverlay').classList.add('visible');
+  }
+});
+
+// ---------- Credits Menu ----------
+document.getElementById('creditsClose').addEventListener('click', () => {
+  document.getElementById('creditsOverlay').classList.remove('visible');
+  document.getElementById('mainMenuOverlay').classList.add('visible');
+});
+
+document.getElementById('creditsOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('creditsOverlay')) {
+    document.getElementById('creditsOverlay').classList.remove('visible');
+    document.getElementById('mainMenuOverlay').classList.add('visible');
+  }
+});
+
+// ---------- Notification System ----------
+function showNotification(message, type = 'info', duration = 3000) {
+  const container = document.getElementById('notificationContainer');
+  const notification = document.createElement('div');
+  notification.className = `notification ${type}`;
+  notification.textContent = message;
+
+  container.appendChild(notification);
+
+  // Auto-remove after duration
+  setTimeout(() => {
+    notification.classList.add('fade-out');
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.parentNode.removeChild(notification);
+      }
+    }, 500);
+  }, duration);
+}
+
+// ---------- Keyboard Shortcuts ----------
+window.addEventListener('keydown', (e) => {
+  // ESC key for main menu
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    if (document.getElementById('mainMenuOverlay').classList.contains('visible')) {
+      document.getElementById('mainMenuOverlay').classList.remove('visible');
+      gamePaused = false;
+      showNotification('Game Resumed', 'success');
+    } else {
+      document.getElementById('mainMenuOverlay').classList.add('visible');
+      gamePaused = true;
+      showNotification('Game Paused', 'info');
+    }
+  }
+
+  // F1 for help
+  if (e.key === 'F1') {
+    e.preventDefault();
+    document.getElementById('helpOverlay').classList.add('visible');
+  }
+
+  // Prevent shortcuts when menus are open
+  if (gamePaused) {
+    return;
+  }
+
+  // M for main menu
+  if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    document.getElementById('mainMenuOverlay').classList.add('visible');
+    gamePaused = true;
+    showNotification('Game Paused', 'info');
+  }
+
+  // C for customize
+  if (e.key.toLowerCase() === 'c' && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    document.getElementById('customizeOverlay').classList.add('visible');
+    updateAccessoryEditor();
+  }
+
+  // O for settings
+  if (e.key.toLowerCase() === 'o' && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    document.getElementById('settingsOverlay').classList.add('visible');
+  }
+
+  // T for chat toggle
+  if (e.key.toLowerCase() === 't' && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    toggleChat();
+  }
+
+  // Enter for chat focus
+  if (e.key === 'Enter' && !e.ctrlKey && !e.altKey) {
+    const chatField = document.getElementById('chatField');
+    if (document.activeElement !== chatField) {
+      e.preventDefault();
+      chatField.focus();
+    }
+  }
 });
 
 // Chat toggle function
@@ -646,9 +814,11 @@ const wall2 = new THREE.Mesh(wallGeom, wallMat); wall2.position.set(-30, 2, 30);
 
 
 
+
+
 // ---------- Particle Systems ----------
 // Performance optimization: Reduce particle counts on mobile
-const dustCount = isMobile ? 50 : 200;
+const dustCount = isMobile ? 100 : 400;
 const sparkleCount = isMobile ? 10 : 20;
 const sweatCount = isMobile ? 15 : 30;
 
@@ -720,7 +890,7 @@ scene.add(sweatParticles);
 const myPlayerId = 'player_' + Math.random().toString(36).substr(2, 9);
 const otherPlayers = new Map();
 let lastUpdateTime = 0;
-const UPDATE_INTERVAL = 50;
+const UPDATE_INTERVAL = isMobile ? 100 : 75; // Reduce frequency on mobile for better performance
 let multiplayerReady = false;
 let myPlayerRef = null;
 const db = window.firebaseDB;
@@ -733,188 +903,88 @@ let currentAnim = 'idle';
 let idleTimer = 0;
 let nextIdleSpecialTime = Math.random() * 15 + 5;
 
-function loadPlayer(){
-  loader.load("./model/idle.glb", idleGLB=>{
-    model=idleGLB.scene;
-    model.scale.set(0.35,0.35,0.35);
-    model.rotation.y=Math.PI;
-    scene.add(model);
-    mixer=new THREE.AnimationMixer(model);
-    idleAction=mixer.clipAction(idleGLB.animations[0]);
-    idleAction.play();
+// Optimized player loading: Load all models in parallel
+function loadPlayer() {
+  const animations = {
+    idle: "./model/idle.glb",
+    walk: "./model/walk.glb",
+    run: "./model/run.glb",
+    idleSpecial: "./model/idle_special1.glb",
+    emoteWave: "./model/emote_wave.glb",
+    emoteLaugh: "./model/emote_laugh.glb",
+    emotePoint: "./model/emote_point.glb"
+  };
 
-    loader.load("./model/walk.glb", walkGLB=>{
-      walkAction=mixer.clipAction(walkGLB.animations[0]);
-      walkAction.timeScale=2;
+  const loadedAnimations = {};
+  let loadedCount = 0;
+  const totalCount = Object.keys(animations).length;
 
-      loader.load("./model/run.glb", runGLB=>{
-        runAction=mixer.clipAction(runGLB.animations[0]);
-        runAction.timeScale=3;
+  function onAnimationLoaded(name, glb) {
+    loadedAnimations[name] = glb;
+    loadedCount++;
 
-        loader.load("./model/idle_special1.glb", idleSpecialGLB=>{
-          idleSpecialAction=mixer.clipAction(idleSpecialGLB.animations[0]);
-          idleSpecialAction.loop=THREE.LoopOnce;
-          idleSpecialAction.clampWhenFinished=true;
+    if (loadedCount === totalCount) {
+      setupPlayerModel(loadedAnimations);
+    }
+  }
 
-          // Load emote animations (same pattern as idle_special1)
-          loader.load("./model/emote_wave.glb", emoteWaveGLB=>{
-            emoteWaveAction=mixer.clipAction(emoteWaveGLB.animations[0]);
-            emoteWaveAction.loop=THREE.LoopOnce;
-            emoteWaveAction.clampWhenFinished=true;
+  function setupPlayerModel(animations) {
+    // Setup idle model first
+    if (animations.idle) {
+      model = animations.idle.scene;
+      model.scale.set(0.35, 0.35, 0.35);
+      model.rotation.y = Math.PI;
+      scene.add(model);
+      mixer = new THREE.AnimationMixer(model);
+      idleAction = mixer.clipAction(animations.idle.animations[0]);
+      idleAction.play();
+    }
 
-            loader.load("./model/emote_laugh.glb", emoteLaughGLB=>{
-              emoteLaughAction=mixer.clipAction(emoteLaughGLB.animations[0]);
-              emoteLaughAction.loop=THREE.LoopOnce;
-              emoteLaughAction.clampWhenFinished=true;
+    // Setup other animations
+    if (animations.walk) {
+      walkAction = mixer.clipAction(animations.walk.animations[0]);
+      walkAction.timeScale = 2;
+    }
 
-              loader.load("./model/emote_point.glb", emotePointGLB=>{
-                emotePointAction=mixer.clipAction(emotePointGLB.animations[0]);
-                emotePointAction.loop=THREE.LoopOnce;
-                emotePointAction.clampWhenFinished=true;
-                document.getElementById("loading").style.display="none";
-                initMultiplayer(); // Initialize after models load
-              }, undefined, err=>{
-                console.log("Point emote animation missing, using regular idle.");
-                emotePointAction=null;
-                document.getElementById("loading").style.display="none";
-                initMultiplayer();
-              });
-            }, undefined, err=>{
-              console.log("Laugh emote animation missing, using regular idle.");
-              emoteLaughAction=null;
-              loader.load("./model/emote_point.glb", emotePointGLB=>{
-                emotePointAction=mixer.clipAction(emotePointGLB.animations[0]);
-                emotePointAction.loop=THREE.LoopOnce;
-                emotePointAction.clampWhenFinished=true;
-                document.getElementById("loading").style.display="none";
-                initMultiplayer();
-              }, undefined, err=>{
-                console.log("Point emote animation missing, using regular idle.");
-                emotePointAction=null;
-                document.getElementById("loading").style.display="none";
-                initMultiplayer();
-              });
-            });
-          }, undefined, err=>{
-            console.log("Wave emote animation missing, using regular idle.");
-            emoteWaveAction=null;
-            loader.load("./model/emote_laugh.glb", emoteLaughGLB=>{
-              emoteLaughAction=mixer.clipAction(emoteLaughGLB.animations[0]);
-              emoteLaughAction.loop=THREE.LoopOnce;
-              emoteLaughAction.clampWhenFinished=true;
-              loader.load("./model/emote_point.glb", emotePointGLB=>{
-                emotePointAction=mixer.clipAction(emotePointGLB.animations[0]);
-                emotePointAction.loop=THREE.LoopOnce;
-                emotePointAction.clampWhenFinished=true;
-                document.getElementById("loading").style.display="none";
-                initMultiplayer();
-              }, undefined, err=>{
-                console.log("Point emote animation missing, using regular idle.");
-                emotePointAction=null;
-                document.getElementById("loading").style.display="none";
-                initMultiplayer();
-              });
-            }, undefined, err=>{
-              console.log("Laugh emote animation missing, using regular idle.");
-              emoteLaughAction=null;
-              loader.load("./model/emote_point.glb", emotePointGLB=>{
-                emotePointAction=mixer.clipAction(emotePointGLB.animations[0]);
-                emotePointAction.loop=THREE.LoopOnce;
-                emotePointAction.clampWhenFinished=true;
-                document.getElementById("loading").style.display="none";
-                initMultiplayer();
-              }, undefined, err=>{
-                console.log("Point emote animation missing, using regular idle.");
-                emotePointAction=null;
-                document.getElementById("loading").style.display="none";
-                initMultiplayer();
-              });
-            });
-          });
-        }, undefined, err=>{
-          console.log("Idle special animation missing, using regular idle.");
-          idleSpecialAction=null;
-          // Load emote animations even if idle special is missing
-          loader.load("./model/emote_wave.glb", emoteWaveGLB=>{
-            emoteWaveAction=mixer.clipAction(emoteWaveGLB.animations[0]);
-            emoteWaveAction.loop=THREE.LoopOnce;
-            emoteWaveAction.clampWhenFinished=true;
+    if (animations.run) {
+      runAction = mixer.clipAction(animations.run.animations[0]);
+      runAction.timeScale = 3;
+    }
 
-            loader.load("./model/emote_laugh.glb", emoteLaughGLB=>{
-              emoteLaughAction=mixer.clipAction(emoteLaughGLB.animations[0]);
-              emoteLaughAction.loop=THREE.LoopOnce;
-              emoteLaughAction.clampWhenFinished=true;
-              loader.load("./model/emote_point.glb", emotePointGLB=>{
-                emotePointAction=mixer.clipAction(emotePointGLB.animations[0]);
-                emotePointAction.loop=THREE.LoopOnce;
-                emotePointAction.clampWhenFinished=true;
-                document.getElementById("loading").style.display="none";
-                initMultiplayer();
-              }, undefined, err=>{
-                console.log("Point emote animation missing.");
-                emotePointAction=null;
-                document.getElementById("loading").style.display="none";
-                initMultiplayer();
-              });
-            }, undefined, err=>{
-              console.log("Laugh emote animation missing.");
-              emoteLaughAction=null;
-              loader.load("./model/emote_point.glb", emotePointGLB=>{
-                emotePointAction=mixer.clipAction(emotePointGLB.animations[0]);
-                emotePointAction.loop=THREE.LoopOnce;
-                emotePointAction.clampWhenFinished=true;
-                document.getElementById("loading").style.display="none";
-                initMultiplayer();
-              }, undefined, err=>{
-                console.log("Point emote animation missing.");
-                emotePointAction=null;
-                document.getElementById("loading").style.display="none";
-                initMultiplayer();
-              });
-            });
-          }, undefined, err=>{
-            console.log("Wave emote animation missing.");
-            emoteWaveAction=null;
-            loader.load("./model/emote_laugh.glb", emoteLaughGLB=>{
-              emoteLaughAction=mixer.clipAction(emoteLaughGLB.animations[0]);
-              emoteLaughAction.loop=THREE.LoopOnce;
-              emoteLaughAction.clampWhenFinished=true;
-              document.getElementById("loading").style.display="none";
-              initMultiplayer();
-            }, undefined, err=>{
-              console.log("Laugh emote animation missing.");
-              emoteLaughAction=null;
-              document.getElementById("loading").style.display="none";
-              initMultiplayer();
-            });
-          });
-        });
+    if (animations.idleSpecial) {
+      idleSpecialAction = mixer.clipAction(animations.idleSpecial.animations[0]);
+      idleSpecialAction.loop = THREE.LoopOnce;
+      idleSpecialAction.clampWhenFinished = true;
+    }
 
-      }, undefined, err=>{
-        console.log("Run animation missing, using walk.");
-        runAction = walkAction;
-        document.getElementById("loading").style.display="none";
-        initMultiplayer();
-      });
+    if (animations.emoteWave) {
+      emoteWaveAction = mixer.clipAction(animations.emoteWave.animations[0]);
+      emoteWaveAction.loop = THREE.LoopOnce;
+      emoteWaveAction.clampWhenFinished = true;
+    }
 
-    }, undefined, err=>{
-      walkAction = idleAction;
-      runAction = idleAction;
-      document.getElementById("loading").style.display="none";
-      initMultiplayer();
+    if (animations.emoteLaugh) {
+      emoteLaughAction = mixer.clipAction(animations.emoteLaugh.animations[0]);
+      emoteLaughAction.loop = THREE.LoopOnce;
+      emoteLaughAction.clampWhenFinished = true;
+    }
+
+    if (animations.emotePoint) {
+      emotePointAction = mixer.clipAction(animations.emotePoint.animations[0]);
+      emotePointAction.loop = THREE.LoopOnce;
+      emotePointAction.clampWhenFinished = true;
+    }
+
+    document.getElementById("loading").style.display = "none";
+    initMultiplayer();
+  }
+
+  // Load all animations in parallel
+  Object.entries(animations).forEach(([name, path]) => {
+    loader.load(path, (glb) => onAnimationLoaded(name, glb), undefined, (err) => {
+      console.log(`${name} animation missing, skipping.`);
+      onAnimationLoaded(name, null);
     });
-
-  }, undefined, err=>{
-    console.error("Model load error:", err);
-    const fallbackGeom=new THREE.CapsuleGeometry(0.5,1,4,8);
-    const fallbackMat=new THREE.MeshStandardMaterial({color:0x77c0ff});
-    model=new THREE.Mesh(fallbackGeom,fallbackMat);
-    model.position.copy(playerState.pos);
-    scene.add(model);
-    setTimeout(()=>{
-      document.getElementById("loading").style.display="none";
-      initMultiplayer();
-    },1000);
   });
 }
 loadPlayer();
@@ -1365,7 +1435,7 @@ class CameraController {
     this.pitch = -0.35;
     this.distance = 8;
     this.height = 2;
-    this.sensitivity = 0.002;
+    this.sensitivity = settings.mouseSensitivity * 0.002;
     this.minDistance = 1;
     this.maxDistance = 15;
     this.minPitch = -1.4;
@@ -1375,6 +1445,10 @@ class CameraController {
     this.smoothSpeed = 0.1;
     this.raycaster = new THREE.Raycaster();
     this.collisionObjects = [];
+  }
+
+  setSensitivity(value) {
+    this.sensitivity = value * 0.002;
   }
 
   addCollisionObject(object) {
@@ -1864,6 +1938,8 @@ function animate(){
     }
   }
 
+
+
   // Update other players (smooth interpolation)
   otherPlayers.forEach((playerData) => {
     if (!playerData.mesh) return;
@@ -1918,7 +1994,6 @@ function animate(){
         sweatPositions[i * 3 + 2] = playerState.pos.z + (Math.random() - 0.5) * 2.0; // Wider spread
         sweatVelocities[i].set((Math.random() - 0.5) * 1.0, 0, (Math.random() - 0.5) * 1.0); // No initial Y velocity
         sweatLifetimes[i] = 2.0; // Shorter lifetime to free up slots faster
-        if (!isMobile) console.log('Sweat particle emitted at:', sweatPositions[i * 3], sweatPositions[i * 3 + 1], sweatPositions[i * 3 + 2]); // Only log on desktop
         break;
       }
     }
@@ -1928,59 +2003,75 @@ function animate(){
 
 
 
-  // Update dust particles
+  // Update dust particles (realistic physics simulation)
   for (let i = 0; i < dustCount; i++) {
     // Update lifetime
     dustLifetimes[i] -= dt;
 
     // Respawn particle if lifetime expired or out of bounds
-    if (dustLifetimes[i] <= 0 || dustPositions[i * 3 + 1] > 8 || dustPositions[i * 3 + 1] < 0) {
+    if (dustLifetimes[i] <= 0 || dustPositions[i * 3 + 1] > 8 || dustPositions[i * 3 + 1] < -1) {
       dustPositions[i * 3] = (Math.random() - 0.5) * 80;
       dustPositions[i * 3 + 1] = Math.random() * 4 + 1;
       dustPositions[i * 3 + 2] = (Math.random() - 0.5) * 80;
-      dustVelocities[i].set((Math.random() - 0.5) * 0.02, (Math.random() - 0.5) * 0.01, (Math.random() - 0.5) * 0.02);
+      dustVelocities[i].set((Math.random() - 0.5) * 0.01, Math.random() * 0.005, (Math.random() - 0.5) * 0.01);
       dustOscillation[i].phase = Math.random() * Math.PI * 2;
-      dustLifetimes[i] = Math.random() * 10 + 5;
+      dustLifetimes[i] = Math.random() * 15 + 10; // Longer lifetimes for settling
     } else {
-      // Check distance to player and react if close
-      const dx = dustPositions[i * 3] - playerState.pos.x;
-      const dy = dustPositions[i * 3 + 1] - playerState.pos.y;
-      const dz = dustPositions[i * 3 + 2] - playerState.pos.z;
-      const distanceToPlayer = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      // Apply gravity
+      dustVelocities[i].y -= 0.3 * dt; // Gravity pulls down
 
-      // If player is close (within 8 units) and moving, disturb the dust
-      if (distanceToPlayer < 8 && playerState.moving) {
-        const disturbanceStrength = (8 - distanceToPlayer) / 8; // Stronger when closer
-        const pushDirection = new THREE.Vector3(dx, 0, dz).normalize();
+      // Brownian motion (random small movements)
+      dustVelocities[i].x += (Math.random() - 0.5) * 0.001;
+      dustVelocities[i].y += (Math.random() - 0.5) * 0.001;
+      dustVelocities[i].z += (Math.random() - 0.5) * 0.001;
 
-        // Push dust away from player (stronger push)
-        dustVelocities[i].x += pushDirection.x * disturbanceStrength * 0.3;
-        dustVelocities[i].z += pushDirection.z * disturbanceStrength * 0.3;
-        dustVelocities[i].y += 0.02; // Very slight upward boost
+      // Check distance to player for subtle reaction
+      let disturbanceStrength = 0;
+      if (i % 4 === fpsCounter % 4) { // Check every 4th particle per frame for performance
+        const dx = dustPositions[i * 3] - playerState.pos.x;
+        const dy = dustPositions[i * 3 + 1] - playerState.pos.y;
+        const dz = dustPositions[i * 3 + 2] - playerState.pos.z;
+        const distanceSquared = dx * dx + dy * dy + dz * dz;
 
-        // Add some randomness to make it more natural
-        dustVelocities[i].x += (Math.random() - 0.5) * 0.05;
-        dustVelocities[i].z += (Math.random() - 0.5) * 0.05;
-
-        // Increase oscillation for disturbed particles
-        dustOscillation[i].phase += dt * 2.0;
-      } else {
-        // Apply friction to slow down disturbed particles
-        dustVelocities[i].x *= 0.98;
-        dustVelocities[i].y *= 0.98;
-        dustVelocities[i].z *= 0.98;
-
-        // Normal oscillation for undisturbed particles
-        dustOscillation[i].phase += dt * 0.5;
+        // Only react within 8 units of player
+        if (distanceSquared < 64) { // 8^2 = 64
+          const distanceToPlayer = Math.sqrt(distanceSquared);
+          disturbanceStrength = (8 - distanceToPlayer) / 8 * 0.5; // Subtle reaction
+        }
       }
+
+      if (disturbanceStrength > 0) {
+        // Gentle push away from player presence
+        dustVelocities[i].x += (Math.random() - 0.5) * disturbanceStrength * 0.05;
+        dustVelocities[i].z += (Math.random() - 0.5) * disturbanceStrength * 0.05;
+        dustVelocities[i].y += disturbanceStrength * 0.02; // Slight upward lift
+      }
+
+      // Air resistance (damping)
+      dustVelocities[i].x *= 0.98;
+      dustVelocities[i].y *= 0.98;
+      dustVelocities[i].z *= 0.98;
 
       // Apply movement
       dustPositions[i * 3] += dustVelocities[i].x * dt;
       dustPositions[i * 3 + 1] += dustVelocities[i].y * dt;
       dustPositions[i * 3 + 2] += dustVelocities[i].z * dt;
 
-      // Add subtle floating oscillation
-      dustPositions[i * 3 + 1] += Math.sin(dustOscillation[i].phase) * dustOscillation[i].amplitude * dt * 0.1;
+      // Gentle Brownian oscillation (reduced amplitude)
+      dustOscillation[i].phase += dt * 0.1;
+      dustPositions[i * 3 + 1] += Math.sin(dustOscillation[i].phase) * dustOscillation[i].amplitude * dt * 0.005;
+
+      // Ground collision and settling
+      if (dustPositions[i * 3 + 1] <= 0) {
+        dustPositions[i * 3 + 1] = 0;
+        dustVelocities[i].x *= 0.1; // Reduce horizontal movement
+        dustVelocities[i].y = Math.max(0, dustVelocities[i].y * -0.1); // Bounce slightly or stop
+        dustVelocities[i].z *= 0.1;
+
+        // Particles settle and disappear faster on ground
+        dustLifetimes[i] = Math.min(dustLifetimes[i], 3);
+        dustOscillation[i].amplitude *= 0.95; // Reduce oscillation over time
+      }
     }
   }
   dustGeometry.attributes.position.needsUpdate = true;

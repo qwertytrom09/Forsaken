@@ -18,8 +18,9 @@
 <body>
 <canvas id="scene"></canvas>
 <div id="loading">Loading player…</div>
-<button id="customizeBtn">🎨 Customize</button>
-<button id="settingsBtn">⚙ Settings</button>
+<!-- Main Menu Button -->
+<button id="mainMenuBtn">🏠 Menu</button>
+
 <button id="chatToggleBtn">💬 Chat</button>
 
 <!-- Health & Stamina Bars -->
@@ -218,6 +219,107 @@
     </div>
   </div>
 </div>
+
+<!-- Main Menu -->
+<div id="mainMenuOverlay">
+  <div id="mainMenu">
+    <h2>Forsaken</h2>
+    <div class="menu-options">
+      <button id="resumeGame" class="menu-btn primary">▶ Resume Game</button>
+      <button id="openSettings" class="menu-btn">⚙ Settings</button>
+      <button id="openCustomize" class="menu-btn">🎨 Customize</button>
+      <button id="openHelp" class="menu-btn">❓ Help & Controls</button>
+      <button id="openCredits" class="menu-btn">📜 Credits</button>
+      <button id="quitGame" class="menu-btn danger">🚪 Quit to Main Menu</button>
+    </div>
+  </div>
+</div>
+
+<!-- Help Menu -->
+<div id="helpOverlay">
+  <div id="helpMenu">
+    <h2>Help & Controls</h2>
+    <div class="help-content">
+      <div class="help-section">
+        <h3>🎮 Movement</h3>
+        <ul>
+          <li><strong>WASD</strong> - Move character</li>
+          <li><strong>Shift</strong> - Sprint (requires stamina)</li>
+          <li><strong>Mouse</strong> - Look around (right-click + drag)</li>
+          <li><strong>Mouse Wheel</strong> - Zoom in/out</li>
+        </ul>
+      </div>
+
+      <div class="help-section">
+        <h3>📱 Mobile Controls</h3>
+        <ul>
+          <li><strong>Left Joystick</strong> - Move character</li>
+          <li><strong>Right Touch</strong> - Look around</li>
+          <li><strong>Sprint Button</strong> - Sprint</li>
+        </ul>
+      </div>
+
+      <div class="help-section">
+        <h3>🎯 Game Features</h3>
+        <ul>
+          <li><strong>Chat</strong> - Press Enter or click chat button</li>
+          <li><strong>Emotes</strong> - Click emote buttons to express yourself</li>
+          <li><strong>Customize</strong> - Change your avatar appearance</li>
+          <li><strong>Settings</strong> - Adjust game preferences</li>
+        </ul>
+      </div>
+
+      <div class="help-section">
+        <h3>🎮 Gamepad Support</h3>
+        <ul>
+          <li><strong>Left Stick</strong> - Move character</li>
+          <li><strong>Right Stick</strong> - Look around</li>
+          <li><strong>Right Trigger</strong> - Sprint</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button id="helpClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Credits Menu -->
+<div id="creditsOverlay">
+  <div id="creditsMenu">
+    <h2>Credits</h2>
+    <div class="credits-content">
+      <div class="credit-section">
+        <h3>🎨 Art & Design</h3>
+        <p>3D Models: Mixamo / Adobe</p>
+        <p>UI Design: Custom</p>
+      </div>
+
+      <div class="credit-section">
+        <h3>💻 Development</h3>
+        <p>Three.js Framework</p>
+        <p>Firebase Multiplayer</p>
+      </div>
+
+      <div class="credit-section">
+        <h3>🎵 Audio</h3>
+        <p>Sound Effects: Various free sources</p>
+      </div>
+
+      <div class="credit-section">
+        <h3>📚 Special Thanks</h3>
+        <p>Three.js Community</p>
+        <p>Open Source Contributors</p>
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button id="creditsClose">Close</button>
+    </div>
+  </div>
+</div>
+
 
 
 </body>
