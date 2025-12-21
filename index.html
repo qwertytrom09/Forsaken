@@ -18,6 +18,9 @@
 <body>
 <canvas id="scene"></canvas>
 <div id="loading">Loading player…</div>
+<!-- Notification Container -->
+<div id="notificationContainer"></div>
+
 <!-- Main Menu Button -->
 <button id="mainMenuBtn">🏠 Menu</button>
 
@@ -105,6 +108,85 @@
     <select id="backSelect">
       <option value="none">None</option>
     </select>
+  </div>
+
+  <!-- Face Painting -->
+  <div class="setting-row">
+    <label>Face Paint</label>
+    <button id="openFacePainter" class="menu-btn">🎨 Open Face Painter</button>
+  </div>
+
+  <!-- Face Painting Modal -->
+  <div id="facePaintOverlay" class="face-paint-overlay">
+    <div id="facePaintModal" class="face-paint-modal">
+      <h3>Face Painter</h3>
+
+      <div class="face-paint-content">
+        <!-- Face Preview -->
+        <div class="face-preview-section">
+          <h4>Face Preview</h4>
+          <canvas id="facePreview" width="200" height="200"></canvas>
+          <div class="preview-controls">
+            <button id="clearFacePaint">Clear</button>
+            <button id="resetFacePaint">Reset</button>
+          </div>
+        </div>
+
+        <!-- Painting Tools -->
+        <div class="paint-tools-section">
+          <h4>Painting Tools</h4>
+
+          <!-- Brush Settings -->
+          <div class="tool-group">
+            <label>Brush Size:</label>
+            <input type="range" id="brushSize" min="1" max="50" value="10">
+            <span id="brushSizeValue">10</span>
+          </div>
+
+          <div class="tool-group">
+            <label>Brush Opacity:</label>
+            <input type="range" id="brushOpacity" min="0.1" max="1" step="0.1" value="1">
+            <span id="brushOpacityValue">1.0</span>
+          </div>
+
+          <!-- Color Picker -->
+          <div class="tool-group">
+            <label>Brush Color:</label>
+            <input type="color" id="brushColor" value="#ff0000">
+          </div>
+
+          <!-- Preset Colors -->
+          <div class="tool-group">
+            <label>Quick Colors:</label>
+            <div class="color-palette">
+              <div class="color-swatch" data-color="#ff0000" style="background:#ff0000;"></div>
+              <div class="color-swatch" data-color="#00ff00" style="background:#00ff00;"></div>
+              <div class="color-swatch" data-color="#0000ff" style="background:#0000ff;"></div>
+              <div class="color-swatch" data-color="#ffff00" style="background:#ffff00;"></div>
+              <div class="color-swatch" data-color="#ff00ff" style="background:#ff00ff;"></div>
+              <div class="color-swatch" data-color="#00ffff" style="background:#00ffff;"></div>
+              <div class="color-swatch" data-color="#ffffff" style="background:#ffffff;"></div>
+              <div class="color-swatch" data-color="#000000" style="background:#000000;"></div>
+            </div>
+          </div>
+
+          <!-- Brush Types -->
+          <div class="tool-group">
+            <label>Brush Type:</label>
+            <div class="brush-types">
+              <button class="brush-type active" data-type="round">●</button>
+              <button class="brush-type" data-type="square">■</button>
+              <button class="brush-type" data-type="eraser">⌫</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="face-paint-actions">
+        <button id="applyFacePaint">Apply to Avatar</button>
+        <button id="cancelFacePaint">Cancel</button>
+      </div>
+    </div>
   </div>
 
   <!-- Accessory Position Editor -->
@@ -223,7 +305,6 @@
 <!-- Main Menu -->
 <div id="mainMenuOverlay">
   <div id="mainMenu">
-    <h2>Forsaken</h2>
     <div class="menu-options">
       <button id="resumeGame" class="menu-btn primary">▶ Resume Game</button>
       <button id="openSettings" class="menu-btn">⚙ Settings</button>
@@ -292,7 +373,7 @@
     <div class="credits-content">
       <div class="credit-section">
         <h3>🎨 Art & Design</h3>
-        <p>3D Models: Mixamo / Adobe</p>
+        <p>3D Models: Myself / free3d.com</p>
         <p>UI Design: Custom</p>
       </div>
 
@@ -304,7 +385,7 @@
 
       <div class="credit-section">
         <h3>🎵 Audio</h3>
-        <p>Sound Effects: Various free sources</p>
+        <p>None</p>
       </div>
 
       <div class="credit-section">
@@ -319,8 +400,5 @@
     </div>
   </div>
 </div>
-
-
-
 </body>
 </html>

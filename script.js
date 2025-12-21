@@ -1,6 +1,6 @@
 import './firebase.js';
 
-import * as THREE from "three";
+import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 import { GLTFLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 
 const hud=document.getElementById('hud');
@@ -411,7 +411,8 @@ const customization = {
     hat: 'none',
     face: 'none',
     back: 'none'
-  }
+  },
+  facePaint: null // Will store canvas data URL
 };
 
 function updateHud(){
@@ -737,6 +738,9 @@ function applyCustomization() {
 
     // Apply accessories
     applyAccessoriesToPlayer(model, customization.accessories);
+
+    // Apply face paint
+    applyFacePaintToModel(model);
   }
 
   // Update Firebase
@@ -746,12 +750,418 @@ function applyCustomization() {
       bodyColor: customization.bodyColor,
       accentColor: customization.accentColor,
       scale: customization.scale,
-      accessories: customization.accessories
+      accessories: customization.accessories,
+      facePaint: customization.facePaint
     }).catch(err => console.error("Customization update error:", err));
   }
 
   document.getElementById('customizeOverlay').classList.remove('visible');
 }
+
+// ---------- Face Painting System ----------
+let facePaintCanvas = null;
+let facePaintContext = null;
+let isPainting = false;
+let currentBrush = {
+  type: 'round',
+  size: 10,
+  opacity: 1.0,
+  color: '#ff0000'
+};
+let lastPaintPos = null;
+
+// Initialize face painting
+function initFacePainting() {
+  facePaintCanvas = document.getElementById('facePreview');
+  if (!facePaintCanvas) return;
+
+  facePaintContext = facePaintCanvas.getContext('2d');
+  if (!facePaintContext) return;
+
+  // Clear canvas initially
+  facePaintContext.fillStyle = '#ffffff';
+  facePaintContext.fillRect(0, 0, facePaintCanvas.width, facePaintCanvas.height);
+
+  // Draw face guidelines
+  drawFaceGuidelines();
+
+  // Set up event listeners
+  setupFacePaintEvents();
+  setupFacePaintControls();
+}
+
+// Set up painting event listeners
+function setupFacePaintEvents() {
+  facePaintCanvas.addEventListener('mousedown', startPainting);
+  facePaintCanvas.addEventListener('mousemove', paint);
+  facePaintCanvas.addEventListener('mouseup', stopPainting);
+  facePaintCanvas.addEventListener('mouseout', stopPainting);
+
+  // Touch events for mobile
+  facePaintCanvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+  facePaintCanvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+  facePaintCanvas.addEventListener('touchend', stopPainting);
+}
+
+// Set up control event listeners
+function setupFacePaintControls() {
+  // Brush size
+  document.getElementById('brushSize').addEventListener('input', (e) => {
+    currentBrush.size = parseInt(e.target.value);
+    document.getElementById('brushSizeValue').textContent = currentBrush.size;
+  });
+
+  // Brush opacity
+  document.getElementById('brushOpacity').addEventListener('input', (e) => {
+    currentBrush.opacity = parseFloat(e.target.value);
+    document.getElementById('brushOpacityValue').textContent = currentBrush.opacity.toFixed(1);
+  });
+
+  // Brush color
+  document.getElementById('brushColor').addEventListener('input', (e) => {
+    currentBrush.color = e.target.value;
+  });
+
+  // Color swatches
+  document.querySelectorAll('.color-swatch').forEach(swatch => {
+    swatch.addEventListener('click', () => {
+      currentBrush.color = swatch.dataset.color;
+      document.getElementById('brushColor').value = currentBrush.color;
+    });
+  });
+
+  // Brush types
+  document.querySelectorAll('.brush-type').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.brush-type').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentBrush.type = btn.dataset.type;
+    });
+  });
+
+  // Clear and reset buttons
+  document.getElementById('clearFacePaint').addEventListener('click', clearFacePaint);
+  document.getElementById('resetFacePaint').addEventListener('click', resetFacePaint);
+
+  // Modal controls
+  document.getElementById('openFacePainter').addEventListener('click', openFacePainter);
+  document.getElementById('applyFacePaint').addEventListener('click', applyFacePaint);
+  document.getElementById('cancelFacePaint').addEventListener('click', cancelFacePaint);
+}
+
+// Open face painter modal
+function openFacePainter() {
+  document.getElementById('facePaintOverlay').classList.add('visible');
+
+  // Load existing face paint if any
+  if (customization.facePaint) {
+    const img = new Image();
+    img.onload = () => {
+      facePaintContext.clearRect(0, 0, facePaintCanvas.width, facePaintCanvas.height);
+      facePaintContext.drawImage(img, 0, 0);
+    };
+    img.src = customization.facePaint;
+  }
+}
+
+// Apply face paint and close modal
+function applyFacePaint() {
+  customization.facePaint = facePaintCanvas.toDataURL();
+
+  // Apply to model immediately
+  if (model) {
+    applyFacePaintToModel(model);
+  }
+
+  document.getElementById('facePaintOverlay').classList.remove('visible');
+}
+
+// Cancel face painting (don't save changes)
+function cancelFacePaint() {
+  document.getElementById('facePaintOverlay').classList.remove('visible');
+}
+
+// Clear all face paint
+function clearFacePaint() {
+  facePaintContext.fillStyle = '#ffffff';
+  facePaintContext.fillRect(0, 0, facePaintCanvas.width, facePaintCanvas.height);
+}
+
+// Reset to saved face paint
+function resetFacePaint() {
+  if (customization.facePaint) {
+    const img = new Image();
+    img.onload = () => {
+      facePaintContext.clearRect(0, 0, facePaintCanvas.width, facePaintCanvas.height);
+      facePaintContext.drawImage(img, 0, 0);
+    };
+    img.src = customization.facePaint;
+  } else {
+    clearFacePaint();
+  }
+}
+
+// Painting functions
+function startPainting(e) {
+  isPainting = true;
+  const pos = getCanvasPosition(e);
+  lastPaintPos = pos;
+  paintAtPosition(pos);
+}
+
+function paint(e) {
+  if (!isPainting) return;
+
+  const pos = getCanvasPosition(e);
+  paintAtPosition(pos);
+  lastPaintPos = pos;
+}
+
+function stopPainting() {
+  isPainting = false;
+  lastPaintPos = null;
+}
+
+function handleTouchStart(e) {
+  e.preventDefault();
+  const touch = e.touches[0];
+  const mouseEvent = new MouseEvent('mousedown', {
+    clientX: touch.clientX,
+    clientY: touch.clientY
+  });
+  startPainting(mouseEvent);
+}
+
+function handleTouchMove(e) {
+  e.preventDefault();
+  const touch = e.touches[0];
+  const mouseEvent = new MouseEvent('mousemove', {
+    clientX: touch.clientX,
+    clientY: touch.clientY
+  });
+  paint(mouseEvent);
+}
+
+// Get canvas position from mouse/touch event
+function getCanvasPosition(e) {
+  const rect = facePaintCanvas.getBoundingClientRect();
+  return {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top
+  };
+}
+
+// Paint at a specific position
+function paintAtPosition(pos) {
+  const ctx = facePaintContext;
+
+  ctx.save();
+  ctx.globalCompositeOperation = currentBrush.type === 'eraser' ? 'destination-out' : 'source-over';
+  ctx.globalAlpha = currentBrush.opacity;
+
+  if (currentBrush.type === 'round' || currentBrush.type === 'eraser') {
+    // Draw circle
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, currentBrush.size / 2, 0, Math.PI * 2);
+    ctx.fillStyle = currentBrush.color;
+    ctx.fill();
+  } else if (currentBrush.type === 'square') {
+    // Draw square
+    ctx.fillStyle = currentBrush.color;
+    ctx.fillRect(
+      pos.x - currentBrush.size / 2,
+      pos.y - currentBrush.size / 2,
+      currentBrush.size,
+      currentBrush.size
+    );
+  }
+
+  ctx.restore();
+}
+
+// Apply face paint texture to 3D model
+function applyFacePaintToModel(playerModel) {
+  if (!customization.facePaint) return;
+
+  console.log('Applying face paint to model...');
+
+  let faceMeshesFound = 0;
+
+  playerModel.traverse((child) => {
+    if (child.isMesh && child.material) {
+      console.log('Found mesh:', child.name, 'Material type:', child.material.type);
+
+      // Find ONLY face/head meshes - be more specific
+      const meshName = child.name.toLowerCase();
+      const isFaceMesh = meshName.includes('head') ||
+                        meshName.includes('face') ||
+                        meshName.includes('mixamorighead') ||
+                        (meshName.includes('mixamorig') && meshName.includes('head'));
+
+      // Exclude body/torso meshes even if they match other criteria
+      const isBodyMesh = meshName.includes('body') ||
+                        meshName.includes('torso') ||
+                        meshName.includes('hips') ||
+                        meshName.includes('spine') ||
+                        meshName.includes('chest') ||
+                        meshName.includes('waist');
+
+      if (isFaceMesh && !isBodyMesh) {
+        console.log('Applying face paint to mesh:', child.name);
+
+        try {
+          // Create texture from canvas
+          const texture = new THREE.CanvasTexture(facePaintCanvas);
+          texture.needsUpdate = true;
+          texture.flipY = false; // Canvas coordinates vs WebGL
+          texture.wrapS = THREE.ClampToEdgeWrapping;
+          texture.wrapT = THREE.ClampToEdgeWrapping;
+          texture.minFilter = THREE.LinearFilter;
+          texture.magFilter = THREE.LinearFilter;
+
+          // Handle different material types
+          if (child.material.map) {
+            // Material already has a texture, replace it
+            console.log('Replacing existing texture on mesh:', child.name);
+            child.material.map.dispose(); // Clean up old texture
+            child.material.map = texture;
+            child.material.needsUpdate = true;
+          } else {
+            // Create new material with texture
+            console.log('Creating new textured material for mesh:', child.name);
+            const newMaterial = child.material.clone();
+            newMaterial.map = texture;
+            newMaterial.needsUpdate = true;
+            child.material = newMaterial;
+          }
+
+          faceMeshesFound++;
+        } catch (error) {
+          console.error('Error applying face paint to mesh:', child.name, error);
+        }
+      }
+    }
+  });
+
+  console.log('Face paint applied to', faceMeshesFound, 'meshes');
+
+  // If no specific meshes found, try applying to the first mesh as fallback
+  if (faceMeshesFound === 0) {
+    console.log('No specific face meshes found, trying fallback approach');
+
+    // Find the first mesh that might be a head
+    let firstMesh = null;
+    playerModel.traverse((child) => {
+      if (child.isMesh && child.material && !firstMesh) {
+        firstMesh = child;
+      }
+    });
+
+    if (firstMesh) {
+      console.log('Applying to first mesh as fallback:', firstMesh.name);
+      try {
+        const texture = new THREE.CanvasTexture(facePaintCanvas);
+        texture.needsUpdate = true;
+        texture.flipY = false;
+
+        if (firstMesh.material.map) {
+          firstMesh.material.map.dispose();
+          firstMesh.material.map = texture;
+          firstMesh.material.needsUpdate = true;
+        } else {
+          const newMaterial = firstMesh.material.clone();
+          newMaterial.map = texture;
+          newMaterial.needsUpdate = true;
+          firstMesh.material = newMaterial;
+        }
+      } catch (error) {
+        console.error('Error in fallback face paint application:', error);
+      }
+    }
+  }
+
+  // Force renderer to update materials
+  if (typeof renderer !== 'undefined') {
+    renderer.compile(scene, camera);
+  }
+}
+
+// Draw face guidelines on the canvas
+function drawFaceGuidelines() {
+  const ctx = facePaintContext;
+  const canvas = facePaintCanvas;
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+
+  // Set guideline style - very subtle, low opacity
+  ctx.strokeStyle = 'rgba(119, 192, 255, 0.3)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 2]); // Dashed lines
+
+  // Face outline (oval)
+  ctx.beginPath();
+  ctx.ellipse(centerX, centerY, 60, 80, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Center vertical line
+  ctx.beginPath();
+  ctx.moveTo(centerX, centerY - 70);
+  ctx.lineTo(centerX, centerY + 70);
+  ctx.stroke();
+
+  // Horizontal guidelines
+  const eyeY = centerY - 25;
+  const noseY = centerY + 5;
+  const mouthY = centerY + 35;
+
+  // Eye level line
+  ctx.beginPath();
+  ctx.moveTo(centerX - 80, eyeY);
+  ctx.lineTo(centerX + 80, eyeY);
+  ctx.stroke();
+
+  // Nose level line
+  ctx.beginPath();
+  ctx.moveTo(centerX - 60, noseY);
+  ctx.lineTo(centerX + 60, noseY);
+  ctx.stroke();
+
+  // Mouth level line
+  ctx.beginPath();
+  ctx.moveTo(centerX - 50, mouthY);
+  ctx.lineTo(centerX + 50, mouthY);
+  ctx.stroke();
+
+  // Eye positions (small circles)
+  const eyeSize = 8;
+  ctx.beginPath();
+  ctx.arc(centerX - 25, eyeY, eyeSize, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(centerX + 25, eyeY, eyeSize, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Nose position (small triangle)
+  ctx.beginPath();
+  ctx.moveTo(centerX, noseY - 8);
+  ctx.lineTo(centerX - 6, noseY + 6);
+  ctx.lineTo(centerX + 6, noseY + 6);
+  ctx.closePath();
+  ctx.stroke();
+
+  // Mouth position (small horizontal oval)
+  ctx.beginPath();
+  ctx.ellipse(centerX, mouthY, 15, 5, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Reset line dash for normal drawing
+  ctx.setLineDash([]);
+}
+
+// Initialize face painting when page loads
+document.addEventListener('DOMContentLoaded', () => {
+  initFacePainting();
+});
 
 updateSettingsUI();
 loadCustomAccessoryPositions(); // Load saved accessory positions
@@ -810,6 +1220,9 @@ const wallMat = new THREE.MeshStandardMaterial({color:0x454a52});
 const wall1 = new THREE.Mesh(wallGeom, wallMat); wall1.position.set(30, 2, -30); scene.add(wall1);
 const wall2 = new THREE.Mesh(wallGeom, wallMat); wall2.position.set(-30, 2, 30); wall2.rotation.y=Math.PI/2; scene.add(wall2);
 
+// Terrain objects array for collision detection
+const terrainObjects = [rock1, rock2, rock3, pillar1, pillar2, platform, wall1, wall2];
+
 
 
 
@@ -820,33 +1233,73 @@ const wall2 = new THREE.Mesh(wallGeom, wallMat); wall2.position.set(-30, 2, 30);
 // Performance optimization: Reduce particle counts on mobile
 const dustCount = isMobile ? 100 : 400;
 const sparkleCount = isMobile ? 10 : 20;
-const sweatCount = isMobile ? 15 : 30;
 
-// Dust particles
+// ---------- NEW DUST PARTICLE SYSTEM (From Scratch) ----------
+// Dust particles - completely rewritten for more dynamic behavior
 const dustGeometry = new THREE.BufferGeometry();
 const dustPositions = new Float32Array(dustCount * 3);
 const dustVelocities = [];
-const dustOscillation = [];
+const dustProperties = []; // New property system for enhanced behavior
 const dustLifetimes = [];
+
+// Initialize dust particles with new behavior system
 for (let i = 0; i < dustCount; i++) {
-  dustPositions[i * 3] = (Math.random() - 0.5) * 80; // Smaller area
-  dustPositions[i * 3 + 1] = Math.random() * 4 + 1; // Lower height range
-  dustPositions[i * 3 + 2] = (Math.random() - 0.5) * 80;
-  dustVelocities.push(new THREE.Vector3((Math.random() - 0.5) * 0.02, (Math.random() - 0.5) * 0.01, (Math.random() - 0.5) * 0.02)); // Much slower
-  dustOscillation.push({ phase: Math.random() * Math.PI * 2, amplitude: Math.random() * 0.5 + 0.2 });
-  dustLifetimes.push(Math.random() * 10 + 5); // Random lifetimes
+  // Scatter particles more naturally around the environment
+  const angle = Math.random() * Math.PI * 2;
+  const distance = Math.random() * 60 + 10; // 10-70 units from center
+  dustPositions[i * 3] = Math.cos(angle) * distance;
+  dustPositions[i * 3 + 1] = Math.random() * 6 + 0.5; // 0.5-6.5 height
+  dustPositions[i * 3 + 2] = Math.sin(angle) * distance;
+
+  // Initialize velocities with more variation
+  dustVelocities.push(new THREE.Vector3(
+    (Math.random() - 0.5) * 0.05, // -0.025 to 0.025
+    Math.random() * 0.02 - 0.01,  // -0.01 to 0.01
+    (Math.random() - 0.5) * 0.05   // -0.025 to 0.025
+  ));
+
+  // New property system for enhanced behavior
+  dustProperties.push({
+    baseY: dustPositions[i * 3 + 1], // Store original height
+    buoyancy: Math.random() * 0.8 + 0.2, // 0.2-1.0 (floating tendency)
+    turbulence: Math.random() * 0.5 + 0.1, // 0.1-0.6 (movement intensity)
+    phaseX: Math.random() * Math.PI * 2, // Phase for horizontal oscillation
+    phaseY: Math.random() * Math.PI * 2, // Phase for vertical oscillation
+    windSensitivity: Math.random() * 0.7 + 0.3, // 0.3-1.0 (how much wind affects it)
+    size: Math.random() * 0.06 + 0.04, // 0.04-0.1 particle size variation
+    isTrail: false // Flag for sprint trail particles
+  });
+
+  dustLifetimes.push(Math.random() * 20 + 15); // 15-35 second lifetimes
 }
+
 dustGeometry.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
-const dustMaterial = new THREE.PointsMaterial({ color: 0xf5f5f5, size: 0.08, transparent: true, opacity: 0.4, vertexColors: true });
+
+// Enhanced material with size variation
+const dustMaterial = new THREE.PointsMaterial({
+  color: 0xf5f5f5,
+  size: 0.08,
+  transparent: true,
+  opacity: 0.4,
+  vertexColors: true,
+  sizeAttenuation: true
+});
+
+// Add size attribute for variation
+const dustSizes = new Float32Array(dustCount);
 const dustColors = new Float32Array(dustCount * 3);
 for (let i = 0; i < dustCount; i++) {
-  // Slightly varying colors for more realism
-  const brightness = 0.9 + Math.random() * 0.1;
-  dustColors[i * 3] = brightness; // R
-  dustColors[i * 3 + 1] = brightness; // G
-  dustColors[i * 3 + 2] = brightness; // B
+  dustSizes[i] = dustProperties[i].size;
+  // Natural dust colors with slight variations
+  const baseBrightness = 0.85 + Math.random() * 0.15; // 0.85-1.0
+  const warmth = Math.random() * 0.1; // Slight warmth variation
+  dustColors[i * 3] = baseBrightness + warmth * 0.2; // R
+  dustColors[i * 3 + 1] = baseBrightness + warmth * 0.1; // G
+  dustColors[i * 3 + 2] = baseBrightness; // B
 }
+dustGeometry.setAttribute('size', new THREE.BufferAttribute(dustSizes, 1));
 dustGeometry.setAttribute('color', new THREE.BufferAttribute(dustColors, 3));
+
 const dustParticles = new THREE.Points(dustGeometry, dustMaterial);
 scene.add(dustParticles);
 
@@ -867,22 +1320,7 @@ const sparkleMaterial = new THREE.PointsMaterial({ color: 0xffff00, size: 0.5, t
 const sparkleParticles = new THREE.Points(sparkleGeometry, sparkleMaterial);
 scene.add(sparkleParticles);
 
-// Sweat particles (for low stamina)
-const sweatGeometry = new THREE.BufferGeometry();
-const sweatPositions = new Float32Array(sweatCount * 3);
-const sweatVelocities = [];
-const sweatLifetimes = [];
-for (let i = 0; i < sweatCount; i++) {
-  sweatPositions[i * 3] = 0;
-  sweatPositions[i * 3 + 1] = 0;
-  sweatPositions[i * 3 + 2] = 0;
-  sweatVelocities.push(new THREE.Vector3((Math.random() - 0.5) * 0.5, Math.random() * 0.2 - 0.5, (Math.random() - 0.5) * 0.5));
-  sweatLifetimes.push(0);
-}
-sweatGeometry.setAttribute('position', new THREE.BufferAttribute(sweatPositions, 3));
-const sweatMaterial = new THREE.PointsMaterial({ color: 0x88ddff, size: 0.3, transparent: true, opacity: 0.7 });
-const sweatParticles = new THREE.Points(sweatGeometry, sweatMaterial);
-scene.add(sweatParticles);
+
 
 
 
@@ -1104,6 +1542,7 @@ function updateOtherPlayer(playerId, data) {
       // Update customization if changed
       if (data.bodyColor) playerData.customization.bodyColor = data.bodyColor;
       if (data.scale) playerData.customization.scale = data.scale;
+      if (data.facePaint) playerData.customization.facePaint = data.facePaint;
       // Skip accessories for other players to improve performance
       // if (data.accessories) {
       //   playerData.customization.accessories = data.accessories;
@@ -1818,6 +2257,9 @@ function animate(){
   fpsCounter++;
   if(fpsCounter%10===0) fpsDisplay=Math.round(1/dt);
 
+  // Get time for dust system and lighting
+  const time = clock.getElapsedTime();
+
   if(model){
     let forward=(keys.KeyW?1:0)+(keys.KeyS?-1:0);
     let sideways=(keys.KeyD?1:0)+(keys.KeyA?-1:0);
@@ -1934,7 +2376,7 @@ function animate(){
 
     // Stamina recovery when recovery timer is done (while walking or standing, but not sprinting)
     if(playerStamina < maxStamina && staminaRecoveryTimer <= 0 && !isSprinting){
-      playerStamina = Math.min(maxStamina, playerStamina + 15 * dt);
+      playerStamina = Math.min(maxStamina, playerStamina + 7.5 * dt); // 2x slower recovery
     }
   }
 
@@ -1984,96 +2426,137 @@ function animate(){
 
 
 
-  // Emit sweat particles when stamina is low (performance optimization: less frequent on mobile)
-  const sweatEmitChance = isMobile ? 0.03 : 0.1; // 3% chance on mobile, 10% on desktop
-  if (playerStamina < 50 && Math.random() < sweatEmitChance) {
-    for (let i = 0; i < sweatCount; i++) {
-      if (sweatLifetimes[i] <= 0) {
-        sweatPositions[i * 3] = playerState.pos.x + (Math.random() - 0.5) * 2.0; // Wider spread
-        sweatPositions[i * 3 + 1] = playerState.pos.y + 2.0; // Higher up
-        sweatPositions[i * 3 + 2] = playerState.pos.z + (Math.random() - 0.5) * 2.0; // Wider spread
-        sweatVelocities[i].set((Math.random() - 0.5) * 1.0, 0, (Math.random() - 0.5) * 1.0); // No initial Y velocity
-        sweatLifetimes[i] = 2.0; // Shorter lifetime to free up slots faster
-        break;
-      }
-    }
-  }
 
 
 
 
 
-  // Update dust particles (realistic physics simulation)
+
+  // ---------- NEW DUST PARTICLE SYSTEM (From Scratch) ----------
+  // Update dust particles with completely new behavior system
+
   for (let i = 0; i < dustCount; i++) {
-    // Update lifetime
+    const props = dustProperties[i];
     dustLifetimes[i] -= dt;
 
-    // Respawn particle if lifetime expired or out of bounds
-    if (dustLifetimes[i] <= 0 || dustPositions[i * 3 + 1] > 8 || dustPositions[i * 3 + 1] < -1) {
-      dustPositions[i * 3] = (Math.random() - 0.5) * 80;
-      dustPositions[i * 3 + 1] = Math.random() * 4 + 1;
-      dustPositions[i * 3 + 2] = (Math.random() - 0.5) * 80;
-      dustVelocities[i].set((Math.random() - 0.5) * 0.01, Math.random() * 0.005, (Math.random() - 0.5) * 0.01);
-      dustOscillation[i].phase = Math.random() * Math.PI * 2;
-      dustLifetimes[i] = Math.random() * 15 + 10; // Longer lifetimes for settling
+    // Respawn logic with new distribution
+    if (dustLifetimes[i] <= 0 || dustPositions[i * 3 + 1] < -2) {
+      // Create spiral distribution around the map
+      const spiralAngle = Math.random() * Math.PI * 4; // Multiple spirals
+      const spiralRadius = 15 + Math.random() * 45; // 15-60 units from center
+      const heightVariation = Math.random() * 8 + 1; // 1-9 units height
+
+      dustPositions[i * 3] = Math.cos(spiralAngle) * spiralRadius;
+      dustPositions[i * 3 + 1] = heightVariation;
+      dustPositions[i * 3 + 2] = Math.sin(spiralAngle) * spiralRadius;
+
+      // Reset velocities with new system
+      dustVelocities[i].set(
+        (Math.random() - 0.5) * 0.03, // Gentle base movement
+        (Math.random() - 0.5) * 0.02,
+        (Math.random() - 0.5) * 0.03
+      );
+
+      dustLifetimes[i] = 25 + Math.random() * 20; // 25-45 second lifetimes
+      props.isTrail = false; // Reset trail flag
     } else {
-      // Apply gravity
-      dustVelocities[i].y -= 0.3 * dt; // Gravity pulls down
+      // ===== NEW DUST BEHAVIOR SYSTEM =====
 
-      // Brownian motion (random small movements)
-      dustVelocities[i].x += (Math.random() - 0.5) * 0.001;
-      dustVelocities[i].y += (Math.random() - 0.5) * 0.001;
-      dustVelocities[i].z += (Math.random() - 0.5) * 0.001;
+      // 1. Buoyancy-based floating (replaces gravity)
+      const buoyancyForce = (props.buoyancy - 0.5) * 0.01 * dt;
+      dustVelocities[i].y += buoyancyForce;
 
-      // Check distance to player for subtle reaction
-      let disturbanceStrength = 0;
-      if (i % 4 === fpsCounter % 4) { // Check every 4th particle per frame for performance
-        const dx = dustPositions[i * 3] - playerState.pos.x;
-        const dy = dustPositions[i * 3 + 1] - playerState.pos.y;
-        const dz = dustPositions[i * 3 + 2] - playerState.pos.z;
-        const distanceSquared = dx * dx + dy * dy + dz * dz;
+      // 2. Turbulent atmospheric movement
+      const turbulenceX = Math.sin(time * 0.7 + props.phaseX) * props.turbulence * 0.02;
+      const turbulenceZ = Math.cos(time * 0.5 + props.phaseX) * props.turbulence * 0.02;
+      dustVelocities[i].x += turbulenceX * dt;
+      dustVelocities[i].z += turbulenceZ * dt;
 
-        // Only react within 8 units of player
-        if (distanceSquared < 64) { // 8^2 = 64
-          const distanceToPlayer = Math.sqrt(distanceSquared);
-          disturbanceStrength = (8 - distanceToPlayer) / 8 * 0.5; // Subtle reaction
+      // 3. Vertical oscillation (gentle floating effect)
+      const verticalOscillation = Math.sin(time * 0.3 + props.phaseY) * 0.008 * props.buoyancy;
+      dustPositions[i * 3 + 1] += verticalOscillation * dt;
+
+      // 4. Player interaction (repulsion/attraction based on distance)
+      const dx = dustPositions[i * 3] - playerState.pos.x;
+      const dy = dustPositions[i * 3 + 1] - playerState.pos.y;
+      const dz = dustPositions[i * 3 + 2] - playerState.pos.z;
+      const distanceToPlayer = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      if (distanceToPlayer < 15) { // Increased range from 12 to 15 units
+        const influence = 1 - (distanceToPlayer / 15); // Linear falloff for consistent strength
+
+        if (!props.isTrail) {
+          // Much stronger repulsion effect for ambient dust
+          const repulsionStrength = influence * 2.0 * props.windSensitivity; // Increased to 2.0 for explosive horizontal repulsion
+          const repulsionX = (dx / distanceToPlayer) * repulsionStrength;
+          const repulsionZ = (dz / distanceToPlayer) * repulsionStrength;
+
+          // Apply immediate velocity change (not multiplied by dt for instant response)
+          dustVelocities[i].x += repulsionX; // Full strength horizontal repulsion
+          dustVelocities[i].z += repulsionZ;
+          dustVelocities[i].y += influence * 0.8; // Moderate upward lift (reduced from 0.3)
+
+          // Add explosive random scatter
+          dustVelocities[i].x += (Math.random() - 0.5) * influence * 0.5;
+          dustVelocities[i].z += (Math.random() - 0.5) * influence * 0.5;
+          dustVelocities[i].y += (Math.random() - 0.5) * influence * 0.2;
+
+          // Temporarily reduce air resistance for explosive movement
+          dustVelocities[i].x *= 0.7;
+          dustVelocities[i].y *= 0.7;
+          dustVelocities[i].z *= 0.7;
         }
       }
 
-      if (disturbanceStrength > 0) {
-        // Gentle push away from player presence
-        dustVelocities[i].x += (Math.random() - 0.5) * disturbanceStrength * 0.05;
-        dustVelocities[i].z += (Math.random() - 0.5) * disturbanceStrength * 0.05;
-        dustVelocities[i].y += disturbanceStrength * 0.02; // Slight upward lift
+      // 5. Wind gusts (periodic strong winds)
+      const windGust = Math.sin(time * 0.2) * Math.cos(time * 0.15);
+      if (Math.abs(windGust) > 0.7) {
+        const windDirection = Math.sin(time * 0.1) * Math.PI;
+        const windStrength = (windGust - 0.7) * props.windSensitivity * 0.1;
+        dustVelocities[i].x += Math.cos(windDirection) * windStrength * dt;
+        dustVelocities[i].z += Math.sin(windDirection) * windStrength * dt;
       }
 
-      // Air resistance (damping)
-      dustVelocities[i].x *= 0.98;
-      dustVelocities[i].y *= 0.98;
-      dustVelocities[i].z *= 0.98;
+      // 6. Air resistance with size-based damping
+      const airResistance = 0.95 - (props.size * 0.05); // Larger particles resist more
+      dustVelocities[i].x *= airResistance;
+      dustVelocities[i].y *= airResistance;
+      dustVelocities[i].z *= airResistance;
 
-      // Apply movement
-      dustPositions[i * 3] += dustVelocities[i].x * dt;
-      dustPositions[i * 3 + 1] += dustVelocities[i].y * dt;
-      dustPositions[i * 3 + 2] += dustVelocities[i].z * dt;
+      // 7. Apply velocities with slight randomization
+      dustPositions[i * 3] += dustVelocities[i].x * dt + (Math.random() - 0.5) * 0.001;
+      dustPositions[i * 3 + 1] += dustVelocities[i].y * dt + (Math.random() - 0.5) * 0.001;
+      dustPositions[i * 3 + 2] += dustVelocities[i].z * dt + (Math.random() - 0.5) * 0.001;
 
-      // Gentle Brownian oscillation (reduced amplitude)
-      dustOscillation[i].phase += dt * 0.1;
-      dustPositions[i * 3 + 1] += Math.sin(dustOscillation[i].phase) * dustOscillation[i].amplitude * dt * 0.005;
+      // 8. Ground interaction (soft landing instead of hard collision)
+      if (dustPositions[i * 3 + 1] <= 0.1) {
+        dustPositions[i * 3 + 1] = 0.1; // Hover just above ground
+        dustVelocities[i].x *= 0.3; // Quick horizontal damping
+        dustVelocities[i].y = Math.max(0, dustVelocities[i].y * 0.1); // Soft bounce
+        dustVelocities[i].z *= 0.3;
 
-      // Ground collision and settling
-      if (dustPositions[i * 3 + 1] <= 0) {
-        dustPositions[i * 3 + 1] = 0;
-        dustVelocities[i].x *= 0.1; // Reduce horizontal movement
-        dustVelocities[i].y = Math.max(0, dustVelocities[i].y * -0.1); // Bounce slightly or stop
-        dustVelocities[i].z *= 0.1;
+        // Ground particles settle faster
+        if (!props.isTrail) {
+          dustLifetimes[i] = Math.min(dustLifetimes[i], 8);
+        }
+      }
 
-        // Particles settle and disappear faster on ground
-        dustLifetimes[i] = Math.min(dustLifetimes[i], 3);
-        dustOscillation[i].amplitude *= 0.95; // Reduce oscillation over time
+      // 9. Boundary wrapping (instead of despawning)
+      const boundaryRadius = 75;
+      const particleRadius = Math.sqrt(
+        dustPositions[i * 3] * dustPositions[i * 3] +
+        dustPositions[i * 3 + 2] * dustPositions[i * 3 + 2]
+      );
+
+      if (particleRadius > boundaryRadius) {
+        // Wrap around to opposite side
+        const angle = Math.atan2(dustPositions[i * 3 + 2], dustPositions[i * 3]);
+        dustPositions[i * 3] = Math.cos(angle) * (boundaryRadius - 5);
+        dustPositions[i * 3 + 2] = Math.sin(angle) * (boundaryRadius - 5);
       }
     }
   }
+
   dustGeometry.attributes.position.needsUpdate = true;
 
   // Update sparkle particles
@@ -2092,21 +2575,46 @@ function animate(){
   }
   sparkleGeometry.attributes.position.needsUpdate = true;
 
-  // Update sweat particles
-  for (let i = 0; i < sweatCount; i++) {
-    if (sweatLifetimes[i] > 0) {
-      sweatPositions[i * 3] += sweatVelocities[i].x * dt;
-      sweatPositions[i * 3 + 1] += sweatVelocities[i].y * dt;
-      sweatPositions[i * 3 + 2] += sweatVelocities[i].z * dt;
-      sweatVelocities[i].y -= 9.8 * dt;
-      sweatLifetimes[i] -= dt;
-    } else {
-      sweatPositions[i * 3] = 0;
-      sweatPositions[i * 3 + 1] = 0;
-      sweatPositions[i * 3 + 2] = 0;
+
+
+
+
+  // Animate lighting intensity for ambiance
+  const lightIntensity = 1.4 + Math.sin(time * 0.5) * 0.2;
+  light.intensity = lightIntensity;
+
+  // Add screen shake effect when stamina is low
+  if (playerStamina < 25) {
+    const shakeIntensity = (25 - playerStamina) / 25 * 0.05;
+    camera.position.x += (Math.random() - 0.5) * shakeIntensity;
+    camera.position.y += (Math.random() - 0.5) * shakeIntensity;
+    camera.position.z += (Math.random() - 0.5) * shakeIntensity;
+  }
+
+  // Add particle trail when sprinting (increased visibility)
+  if (isSprinting && Math.random() < 0.8) { // Increased chance from 0.3 to 0.8
+    for (let i = 0; i < dustCount; i++) {
+      if (dustLifetimes[i] <= 0) {
+        const trailOffset = new THREE.Vector3(
+          (Math.random() - 0.5) * 0.3,
+          Math.random() * 0.1 + 0.1, // Lower starting position
+          (Math.random() - 0.5) * 0.3
+        ).add(playerState.pos);
+        dustPositions[i * 3] = trailOffset.x;
+        dustPositions[i * 3 + 1] = trailOffset.y;
+        dustPositions[i * 3 + 2] = trailOffset.z;
+        dustVelocities[i].set(
+          (Math.random() - 0.5) * 0.1,
+          Math.random() * 0.2 + 0.3, // More upward velocity
+          (Math.random() - 0.5) * 0.1
+        );
+        dustLifetimes[i] = 2.0; // Longer lifetime
+        break;
+      }
     }
   }
-  sweatGeometry.attributes.position.needsUpdate = true;
+
+
 
   renderer.render(scene, camera);
   hudState.gamepad=!!gamepad.active;
